@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch 'node_modules|target' } | Select-Object @{n='Path';e={$_.FullName.Replace\\(\\(Get-Location\\).Path + '\\\\',''\\)}}, Length | Format-Table -AutoSize)"
+    ]
+  }
+}

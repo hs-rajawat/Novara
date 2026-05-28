@@ -1,0 +1,121 @@
+/* GameVault theme — Steam Deck + Playnite + Discord inspired.
+   Deep blue-purple base, soft neon accents, glassy panels. */
+
+:root {
+  /* surface stack */
+  --bg-0: #0a0d14;
+  --bg-1: #11151f;
+  --bg-2: #171c28;
+  --bg-3: #1f2533;
+  --bg-hover: #232a3a;
+
+  /* borders & dividers */
+  --border-soft: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+
+  /* text */
+  --text-primary: #e6e8ee;
+  --text-secondary: #9aa3b2;
+  --text-tertiary: #5d6577;
+  --text-inverse: #0a0d14;
+
+  /* accent — a confident violet→cyan gradient */
+  --accent: #7c5cff;
+  --accent-2: #38bdf8;
+  --accent-soft: rgba(124, 92, 255, 0.18);
+  --accent-glow: 0 0 24px rgba(124, 92, 255, 0.35);
+
+  /* status */
+  --success: #4ade80;
+  --warning: #facc15;
+  --danger: #f87171;
+
+  /* layout */
+  --sidebar-w: 232px;
+  --topbar-h: 56px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset,
+              0 8px 24px rgba(0, 0, 0, 0.35);
+
+  /* type */
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system,
+               "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+/* scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-3);
+  border-radius: 999px;
+  border: 2px solid var(--bg-0);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bg-hover);
+}

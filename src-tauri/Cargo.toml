@@ -1,0 +1,66 @@
+[package]
+name = "gamevault"
+version = "0.1.0"
+description = "GameVault - local-first game library tracker"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "gamevault_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+tauri-plugin-dialog = "2.0"
+tauri-plugin-fs = "2.0"
+tauri-plugin-os = "2.0"
+tauri-plugin-shell = "2.0"
+
+# async runtime
+tokio = { version = "1.39", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# storage
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono", "json", "migrate"] }
+
+# serialization / errors / time / ids
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# scanning / fs
+walkdir = "2.5"
+dirs = "5"
+keyvalues-parser = "0.2"  # parse Steam VDF files
+
+# system
+sysinfo = "0.31"
+notify = "6"
+
+# http (metadata fetch — optional, behind feature)
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# crypto for optional db encryption (sqlcipher is heavier; we use sodiumoxide-like sealed boxes for app secrets)
+ring = "0.17"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+panic = "abort"
