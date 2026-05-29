@@ -53,7 +53,7 @@ impl AppState {
     /// Call once after the App is set up.
     pub fn start_event_forwarder(self: &Arc<Self>, handle: AppHandle) {
         let mut rx = self.bus.subscribe();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             while let Ok(ev) = rx.recv().await {
                 let _ = handle.emit("gv://event", &ev);
             }
