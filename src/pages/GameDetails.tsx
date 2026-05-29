@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "@/lib/ipc";
-import type { CompletionState, GameWithInstalls } from "@/types";
+import type { CompletionState, GameWithInstalls, Installation } from "@/types";
 import { formatBytes, formatPlaytime, formatRelative } from "@/lib/format";
 
 const STATES: CompletionState[] = [
@@ -17,6 +17,7 @@ export function GameDetails() {
   const [game, setGame] = useState<GameWithInstalls | null>(null);
   const [notes, setNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [launching, setLaunching] = useState(false);
 
   useEffect(() => {
     api.getGame(id).then((g) => {
@@ -48,6 +49,15 @@ export function GameDetails() {
     }
   }
 
+  async function launch() {
+    setLaunching(true);
+    try {
+      await api.launchGame(id);
+    } finally {
+      setLaunching(false);
+    }
+  }
+
   return (
     <>
       <div className="row spread" style={{ marginBottom: 20 }}>
@@ -62,6 +72,14 @@ export function GameDetails() {
           </div>
         </div>
         <div className="row">
+          <button
+            className="btn btn-primary"
+            onClick={launch}
+            disabled={launching || !canLaunch(game.installations)}
+            title={canLaunch(game.installations) ? "Launch game" : "No launchable installation found"}
+          >
+            {launching ? "Launching…" : "▶ Play"}
+          </button>
           <button className="btn" onClick={fav}>
             {game.is_favorite ? "★ Favorited" : "☆ Favorite"}
           </button>
@@ -152,4 +170,8 @@ function Stat({ label, value }: { label: string; value: string }) {
       </div>
     </div>
   );
+}
+
+function canLaunch(installs: Installation[]): boolean {
+  return installs.some((i) => i.executable !== null || i.source_app_id !== null);
 }

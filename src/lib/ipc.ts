@@ -35,6 +35,7 @@ export const api = {
     invoke<void>("update_notes", { id, notes }),
   mergeDuplicates: (fromId: string, toId: string) =>
     invoke<void>("merge_duplicates", { fromId, toId }),
+  launchGame: (gameId: string) => invoke<void>("launch_game", { gameId }),
 
   // scan
   scanNow: () => invoke<ScanReport[]>("scan_paths_now"),
