@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use tauri::State;
-
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::{Game, Installation};
 use crate::state::AppState;
 
@@ -59,6 +58,67 @@ pub async fn update_notes(
     state: State<'_, Arc<AppState>>,
 ) -> AppResult<()> {
     state.db.set_notes(&id, notes.as_deref()).await
+}
+
+/// Launch a game by its primary installation.
+///
+/// Resolution order:
+///   1. `executable` column present → spawn the binary directly.
+///   2. `source_app_id` present → open a `steam://run/<id>` URI via the OS
+///      default protocol handler (Steam registers this on install).
+///   3. Neither → NotFound error.
+///
+/// A playtime session is opened in both cases; the passive watcher closes it
+/// automatically when the process disappears from the process list.
+#[tauri::command]
+pub async fn launch_game(
+    game_id: String,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<()> {
+    let installs = state.db.list_installations(&game_id).await?;
+    let install = installs
+        .into_iter()
+        .max_by_key(|i| i.is_primary)
+        .ok_or_else(|| AppError::NotFound("no installation found for this game".into()))?;
+
+    if let Some(exe_rel) = &install.executable {
+        let exe_path = std::path::Path::new(&install.install_dir).join(exe_rel);
+        let _child = std::process::Command::new(&exe_path)
+            .current_dir(&install.install_dir)
+            .spawn()
+            .map_err(|e| AppError::Other(format!("failed to launch executable: {e}")))?;
+        state.playtime.start(&game_id, Some(exe_rel.as_str())).await?;
+    } else if let Some(app_id) = &install.source_app_id {
+        open_uri(&format!("steam://run/{app_id}"))
+            .map_err(|e| AppError::Other(format!("failed to open steam URI: {e}")))?;
+        state.playtime.start(&game_id, None).await?;
+    } else {
+        return Err(AppError::NotFound(
+            "no executable or launch URI for this installation".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+/// Open a URI with the OS default handler. Uses platform-specific commands
+/// rather than a plugin to keep the dependency surface minimal.
+fn open_uri(uri: &str) -> std::io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", uri])
+            .spawn()?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(uri).spawn()?;
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open").arg(uri).spawn()?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
