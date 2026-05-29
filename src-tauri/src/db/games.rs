@@ -178,6 +178,26 @@ impl Db {
         Ok(())
     }
 
+    pub async fn set_cover_path(&self, id: &str, path: &str) -> AppResult<()> {
+        sqlx::query("UPDATE games SET cover_path = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(path)
+            .bind(now_rfc3339())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_hero_path(&self, id: &str, path: &str) -> AppResult<()> {
+        sqlx::query("UPDATE games SET hero_path = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(path)
+            .bind(now_rfc3339())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn set_notes(&self, id: &str, notes: Option<&str>) -> AppResult<()> {
         sqlx::query("UPDATE games SET user_notes = ?1, updated_at = ?2 WHERE id = ?3")
             .bind(notes)

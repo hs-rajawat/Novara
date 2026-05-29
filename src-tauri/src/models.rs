@@ -74,6 +74,9 @@ pub struct SaveProfile {
     pub glob: Option<String>,
     pub auto_backup: i64,
     pub created_at: String,
+    /// 1 if the user manually chose this save directory; 0 if auto-detected.
+    /// Re-detection will not overwrite a manual override.
+    pub is_manual_override: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

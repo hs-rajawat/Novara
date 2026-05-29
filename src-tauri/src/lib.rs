@@ -19,6 +19,7 @@ pub mod events;
 pub mod metadata;
 pub mod models;
 pub mod playtime;
+pub mod save_detect;
 pub mod save_mgr;
 pub mod scanner;
 pub mod state;
@@ -77,6 +78,8 @@ pub fn run() {
             commands::games::launch_game,
             commands::games::import_executable,
             commands::games::set_installation_executable,
+            commands::games::set_cover_path,
+            commands::games::set_hero_path,
             commands::scan::scan_paths_now,
             commands::scan::add_scan_path,
             commands::scan::remove_scan_path,
@@ -90,6 +93,8 @@ pub fn run() {
             commands::saves::backup_now,
             commands::saves::list_backups,
             commands::saves::restore_backup,
+            commands::saves::delete_save_profile,
+            commands::saves::detect_save_paths,
             commands::playtime::start_session,
             commands::playtime::stop_session,
             commands::playtime::list_sessions,

@@ -8,6 +8,70 @@ use crate::events::AppEvent;
 use crate::models::{Game, Installation};
 use crate::state::AppState;
 
+/// Copy `src_path` into `<app_data>/artwork/<game_id>/<kind>.<ext>`,
+/// removing any previous file for that kind/game.
+fn copy_artwork(
+    app_data_dir: &Path,
+    game_id: &str,
+    src_path: &str,
+    kind: &str,
+) -> AppResult<String> {
+    let src = Path::new(src_path);
+    if !src.is_file() {
+        return Err(AppError::Invalid(format!("not a file: {src_path}")));
+    }
+    let ext = src
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("jpg")
+        .to_lowercase();
+
+    let dest_dir = app_data_dir.join("artwork").join(game_id);
+    std::fs::create_dir_all(&dest_dir)
+        .map_err(|e| AppError::Other(format!("create artwork dir: {e}")))?;
+
+    let dest = dest_dir.join(format!("{kind}.{ext}"));
+
+    // Remove stale files with a different extension for the same kind.
+    for old_ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp"] {
+        let old = dest_dir.join(format!("{kind}.{old_ext}"));
+        if old.exists() && old != dest {
+            let _ = std::fs::remove_file(&old);
+        }
+    }
+
+    if src != dest.as_path() {
+        std::fs::copy(src, &dest)
+            .map_err(|e| AppError::Other(format!("copy artwork: {e}")))?;
+    }
+
+    Ok(dest.display().to_string())
+}
+
+#[tauri::command]
+pub async fn set_cover_path(
+    game_id: String,
+    image_path: String,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<String> {
+    let stored = copy_artwork(&state.app_data_dir, &game_id, &image_path, "cover")?;
+    state.db.set_cover_path(&game_id, &stored).await?;
+    state.bus.emit(AppEvent::GameUpdated { game_id: game_id.clone() });
+    Ok(stored)
+}
+
+#[tauri::command]
+pub async fn set_hero_path(
+    game_id: String,
+    image_path: String,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<String> {
+    let stored = copy_artwork(&state.app_data_dir, &game_id, &image_path, "hero")?;
+    state.db.set_hero_path(&game_id, &stored).await?;
+    state.bus.emit(AppEvent::GameUpdated { game_id: game_id.clone() });
+    Ok(stored)
+}
+
 #[derive(serde::Serialize)]
 pub struct GameWithInstalls {
     #[serde(flatten)]

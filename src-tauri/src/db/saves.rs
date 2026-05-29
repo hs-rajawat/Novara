@@ -22,12 +22,14 @@ impl Db {
         source_dir: &str,
         glob: Option<&str>,
         auto_backup: bool,
+        is_manual_override: bool,
     ) -> AppResult<SaveProfile> {
         let id = Uuid::new_v4().to_string();
         sqlx::query(
             r#"
-            INSERT INTO save_profiles (id, game_id, label, source_dir, glob, auto_backup, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            INSERT INTO save_profiles
+              (id, game_id, label, source_dir, glob, auto_backup, is_manual_override, created_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "#,
         )
         .bind(&id)
@@ -36,6 +38,7 @@ impl Db {
         .bind(source_dir)
         .bind(glob)
         .bind(auto_backup as i64)
+        .bind(is_manual_override as i64)
         .bind(now_rfc3339())
         .execute(&self.pool)
         .await?;
@@ -43,6 +46,14 @@ impl Db {
             .bind(&id)
             .fetch_one(&self.pool)
             .await?)
+    }
+
+    pub async fn delete_save_profile(&self, id: &str) -> AppResult<()> {
+        sqlx::query("DELETE FROM save_profiles WHERE id = ?1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn record_backup(
