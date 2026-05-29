@@ -43,6 +43,8 @@ export interface Installation {
   install_size_bytes: number | null;
   is_primary: number;
   detected_at: string;
+  /** 1 when the executable was manually chosen; scanner will not overwrite it. */
+  executable_override: number;
 }
 
 export interface GameWithInstalls extends Game {

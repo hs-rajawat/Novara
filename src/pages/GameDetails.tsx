@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "@/lib/ipc";
 import type { CompletionState, GameWithInstalls, Installation } from "@/types";
 import { formatBytes, formatPlaytime, formatRelative } from "@/lib/format";
@@ -56,6 +57,17 @@ export function GameDetails() {
     } finally {
       setLaunching(false);
     }
+  }
+
+  async function browseExe(installationId: string) {
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: "Executables", extensions: ["exe", "bat", "sh", "AppImage"] }],
+    });
+    if (!picked || Array.isArray(picked)) return;
+    await api.setInstallationExecutable(installationId, picked as string);
+    const refreshed = await api.getGame(id);
+    setGame(refreshed);
   }
 
   return (
@@ -131,11 +143,32 @@ export function GameDetails() {
       </div>
       <div className="list" style={{ marginBottom: 24 }}>
         {game.installations.map((i) => (
-          <div key={i.id} className="list-row">
-            <div style={{ flex: 1, fontFamily: "var(--font-mono)", fontSize: 12 }}>
-              {i.install_dir}
+          <div
+            key={i.id}
+            className="list-row"
+            style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}
+          >
+            <div className="row spread">
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, flex: 1 }}>
+                {i.install_dir}
+              </div>
+              <div className="muted small">{formatBytes(i.install_size_bytes ?? 0)}</div>
             </div>
-            <div className="muted small">{formatBytes(i.install_size_bytes ?? 0)}</div>
+            <div className="row spread">
+              <div className="muted small" style={{ fontFamily: "var(--font-mono)", flex: 1 }}>
+                {i.executable
+                  ? `${i.executable}${i.executable_override ? " (manual)" : ""}`
+                  : "no executable detected"}
+              </div>
+              <button
+                className="btn btn-ghost small"
+                style={{ fontSize: 11, padding: "4px 10px" }}
+                onClick={() => browseExe(i.id)}
+                title="Choose a different executable for this installation"
+              >
+                Browse…
+              </button>
+            </div>
           </div>
         ))}
       </div>

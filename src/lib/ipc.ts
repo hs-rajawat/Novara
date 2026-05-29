@@ -36,6 +36,10 @@ export const api = {
   mergeDuplicates: (fromId: string, toId: string) =>
     invoke<void>("merge_duplicates", { fromId, toId }),
   launchGame: (gameId: string) => invoke<void>("launch_game", { gameId }),
+  importExecutable: (exePath: string) =>
+    invoke<string>("import_executable", { exePath }),
+  setInstallationExecutable: (installationId: string, exePath: string) =>
+    invoke<void>("set_installation_executable", { installationId, exePath }),
 
   // scan
   scanNow: () => invoke<ScanReport[]>("scan_paths_now"),

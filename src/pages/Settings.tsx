@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "@/lib/ipc";
 
 export function Settings() {
+  const navigate = useNavigate();
   const [paths, setPaths] = useState<string[]>([]);
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [appInfo, setAppInfo] = useState<{
@@ -38,6 +40,16 @@ export function Settings() {
     await load();
   }
 
+  async function importExe() {
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: "Executables", extensions: ["exe", "bat", "sh", "AppImage"] }],
+    });
+    if (!picked || Array.isArray(picked)) return;
+    const gameId = await api.importExecutable(picked);
+    navigate(`/library/${gameId}`);
+  }
+
   return (
     <>
       <div className="section-header">
@@ -69,9 +81,14 @@ export function Settings() {
           ))
         )}
       </div>
-      <button className="btn btn-primary" onClick={pick}>
-        Add folder…
-      </button>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn btn-primary" onClick={pick}>
+          Add folder…
+        </button>
+        <button className="btn" onClick={importExe} title="Import a single game by selecting its executable directly">
+          Import executable…
+        </button>
+      </div>
 
       <div className="section-header" style={{ marginTop: 32 }}>
         <h2>Privacy</h2>
