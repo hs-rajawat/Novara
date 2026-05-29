@@ -104,7 +104,7 @@ fn discover_libraries(steam_dir: &Path) -> Vec<PathBuf> {
     let Ok(text) = std::fs::read_to_string(&vdf) else {
         return libs;
     };
-    let Ok(parsed) = keyvalues_parser::Vdf::parse(&text) else {
+    let Ok(parsed) = keyvalues_parser::parse(&text).map(keyvalues_parser::Vdf::from) else {
         return libs;
     };
     // libraryfolders.vdf shape:
@@ -129,7 +129,8 @@ fn discover_libraries(steam_dir: &Path) -> Vec<PathBuf> {
 
 fn parse_manifest(path: &Path, steamapps_dir: &Path) -> AppResult<DetectedGame> {
     let text = std::fs::read_to_string(path)?;
-    let parsed = keyvalues_parser::Vdf::parse(&text)
+    let parsed = keyvalues_parser::parse(&text)
+        .map(keyvalues_parser::Vdf::from)
         .map_err(|e| AppError::Scanner(format!("ACF parse: {e}")))?;
     let obj = parsed
         .value

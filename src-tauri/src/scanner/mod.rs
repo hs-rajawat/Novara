@@ -55,8 +55,8 @@ pub struct ScanReport {
 impl ScannerOrchestrator {
     pub fn new(db: Db, bus: EventBus) -> Self {
         let scanners: Vec<Box<dyn Scanner>> = vec![
-            Box::new(steam::SteamScanner::default()),
-            Box::new(manual::ManualScanner::default()),
+            Box::new(steam::SteamScanner),
+            Box::new(manual::ManualScanner),
             // Stubs for additional sources — add when implemented.
             // Box::new(epic::EpicScanner::default()),
             // Box::new(gog::GogScanner::default()),
