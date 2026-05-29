@@ -15,6 +15,9 @@ pub struct UpsertGame<'a> {
     pub install_dir: &'a str,
     pub executable: Option<&'a str>,
     pub install_size_bytes: Option<i64>,
+    /// Pass `true` when the caller (not the scanner) chose this executable.
+    /// Prevents future rescans from overwriting the user's choice.
+    pub executable_override: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -74,15 +77,25 @@ impl Db {
         };
 
         // 4. Upsert the installation row (idempotent on install_dir).
+        //
+        // On conflict the executable is preserved when the user has manually
+        // overridden it (executable_override = 1); scanner-detected values
+        // are accepted only when the override flag is 0.
+        // The override flag itself is set to MAX(existing, incoming) so a
+        // manual import on an already-scanned game latches the flag to 1.
         let install_id = Uuid::new_v4().to_string();
         sqlx::query(
             r#"
             INSERT INTO game_installations
               (id, game_id, source_id, install_dir, executable, source_app_id,
-               install_size_bytes, is_primary, detected_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8)
+               install_size_bytes, is_primary, detected_at, executable_override)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9)
             ON CONFLICT(install_dir) DO UPDATE SET
-              executable = excluded.executable,
+              executable = CASE WHEN game_installations.executable_override = 1
+                                THEN game_installations.executable
+                                ELSE excluded.executable END,
+              executable_override = MAX(game_installations.executable_override,
+                                        excluded.executable_override),
               source_app_id = excluded.source_app_id,
               install_size_bytes = excluded.install_size_bytes,
               detected_at = excluded.detected_at
@@ -96,6 +109,7 @@ impl Db {
         .bind(input.source_app_id)
         .bind(input.install_size_bytes)
         .bind(now_rfc3339())
+        .bind(input.executable_override as i64)
         .execute(&mut *tx)
         .await?;
 
@@ -171,6 +185,48 @@ impl Db {
             .bind(id)
             .execute(&self.pool)
             .await?;
+        Ok(())
+    }
+
+    /// Override the executable for a single installation, locking it so
+    /// subsequent scans leave it untouched.
+    ///
+    /// `exe_path` is an absolute path; the method stores a path relative to
+    /// `install_dir` when the file is inside the install directory, otherwise
+    /// it stores the absolute path (works because `Path::join` on an absolute
+    /// component discards the base on all platforms).
+    pub async fn set_installation_executable(
+        &self,
+        id: &str,
+        exe_path: &str,
+    ) -> AppResult<()> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT install_dir FROM game_installations WHERE id = ?1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let Some((install_dir,)) = row else {
+            return Err(AppError::NotFound(format!("installation not found: {id}")));
+        };
+
+        let exe = std::path::Path::new(exe_path);
+        let stored = exe
+            .strip_prefix(&install_dir)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| exe_path.to_string());
+
+        sqlx::query(
+            "UPDATE game_installations \
+             SET executable = ?1, executable_override = 1 \
+             WHERE id = ?2",
+        )
+        .bind(stored)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 

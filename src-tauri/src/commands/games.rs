@@ -1,7 +1,10 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use tauri::State;
+use crate::db::games::UpsertGame;
 use crate::error::{AppError, AppResult};
+use crate::events::AppEvent;
 use crate::models::{Game, Installation};
 use crate::state::AppState;
 
@@ -128,4 +131,68 @@ pub async fn merge_duplicates(
     state: State<'_, Arc<AppState>>,
 ) -> AppResult<()> {
     state.db.merge_games(&from_id, &to_id).await
+}
+
+/// Import a game directly from a specific executable, bypassing the folder
+/// scanner heuristics. The parent directory becomes `install_dir`; the
+/// executable is stored by filename only (relative to that directory).
+///
+/// Returns the canonical game UUID so the caller can navigate to GameDetails.
+#[tauri::command]
+pub async fn import_executable(
+    exe_path: String,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<String> {
+    let exe = Path::new(&exe_path);
+    if !exe.is_file() {
+        return Err(AppError::Invalid(format!("not a file: {exe_path}")));
+    }
+    let install_dir = exe
+        .parent()
+        .ok_or_else(|| AppError::Invalid("cannot determine install directory from path".into()))?;
+    let title = install_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or_else(|| exe.file_stem().and_then(|s| s.to_str()).unwrap_or("Imported Game"));
+    let executable = exe
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| AppError::Invalid("invalid executable filename".into()))?;
+    let install_dir_str = install_dir.to_string_lossy();
+
+    let result = state
+        .db
+        .upsert_game(UpsertGame {
+            title,
+            source_code: "manual",
+            source_app_id: None,
+            install_dir: &install_dir_str,
+            executable: Some(executable),
+            install_size_bytes: None,
+            executable_override: true,
+        })
+        .await?;
+
+    if result.created {
+        state.bus.emit(AppEvent::GameAdded {
+            game_id: result.game_id_owned.to_string(),
+            title: title.to_string(),
+        });
+    }
+
+    Ok(result.game_id_owned.to_string())
+}
+
+/// Override the executable for an existing installation and lock it so
+/// subsequent rescans will not overwrite the user's choice.
+#[tauri::command]
+pub async fn set_installation_executable(
+    installation_id: String,
+    exe_path: String,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<()> {
+    state
+        .db
+        .set_installation_executable(&installation_id, &exe_path)
+        .await
 }

@@ -75,6 +75,8 @@ pub fn run() {
             commands::games::update_notes,
             commands::games::merge_duplicates,
             commands::games::launch_game,
+            commands::games::import_executable,
+            commands::games::set_installation_executable,
             commands::scan::scan_paths_now,
             commands::scan::add_scan_path,
             commands::scan::remove_scan_path,

@@ -44,6 +44,9 @@ pub struct Installation {
     pub install_size_bytes: Option<i64>,
     pub is_primary: i64,
     pub detected_at: String,
+    /// 1 if the executable was set manually by the user; scanner will not
+    /// overwrite it on subsequent rescans.
+    pub executable_override: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

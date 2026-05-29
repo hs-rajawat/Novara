@@ -113,6 +113,7 @@ impl ScannerOrchestrator {
                                 install_dir: install_dir.as_str(),
                                 executable: exe_str.as_deref(),
                                 install_size_bytes: g.install_size_bytes,
+                                executable_override: false,
                             })
                             .await
                         {
