@@ -3,7 +3,7 @@
 **App:** Local-first game library & progress tracker (Tauri 2 + React 18 + SQLite)  
 **Version:** 0.1.0  
 **Current Phase:** Phase 2 (Mods & Additional Scanners)  
-**Overall Completion:** ~83%
+**Overall Completion:** ~88%
 
 ---
 
@@ -16,23 +16,26 @@ All items below are fully implemented, tested, and passing `cargo check` + `carg
 | Component | Location |
 |-----------|----------|
 | SQLite database + WAL mode + FK enforcement + connection pool | `src-tauri/src/db/mod.rs` |
-| Schema migration (single migration, all 14 tables) | `src-tauri/migrations/0001_init.sql` |
+| Schema migrations (3 migrations) | `src-tauri/migrations/` |
 | Steam library scanner — multi-library VDF + ACF parsing | `src-tauri/src/scanner/steam.rs` |
 | Manual folder scanner — depth-3 walk, exe ranking, size | `src-tauri/src/scanner/manual.rs` |
 | Scanner orchestrator — parallel execution, upsert dedup, scan audit log | `src-tauri/src/scanner/mod.rs` |
 | Save backup — custom `.gvbk` deterministic archive | `src-tauri/src/save_mgr/mod.rs` |
 | Save restore — atomic pre-restore backup → rename → restore | `src-tauri/src/save_mgr/mod.rs` |
-| Save profiles CRUD — multiple profiles per game | `src-tauri/src/db/saves.rs` |
+| Save profiles CRUD — create (with `is_manual_override`), delete, list | `src-tauri/src/db/saves.rs` |
+| Save path detection — heuristic search of 6 OS locations | `src-tauri/src/save_detect.rs` |
 | Playtime tracking — explicit (`start`/`stop`) | `src-tauri/src/playtime/mod.rs` |
 | Playtime tracking — passive background watcher (sysinfo, 5 s poll) | `src-tauri/src/playtime/mod.rs` |
 | Idle detection — frontend-reported idle seconds tracked per session | `src-tauri/src/playtime/mod.rs` |
 | Achievement CRUD — create, toggle unlock, delete, auto-completion % | `src-tauri/src/db/achievements.rs` |
-| Game library CRUD — upsert, list, favorite, completion state, notes | `src-tauri/src/db/games.rs` |
+| Game library CRUD — upsert, list, favorite, completion state, notes, cover/hero | `src-tauri/src/db/games.rs` |
+| Cover art management — `set_cover_path`/`set_hero_path`; copies to `<app_data>/artwork/` | `src-tauri/src/commands/games.rs` |
 | Game launch — spawns exe directly; opens `steam://run/<id>` URI for Steam games | `src-tauri/src/commands/games.rs` |
+| Executable override — user-chosen exe survives rescans; import-by-exe flow | `src-tauri/src/commands/games.rs` |
 | Duplicate game merge — reparents sessions/saves/achievements to survivor | `src-tauri/src/db/games.rs` |
 | Event bus — `tokio::broadcast`, 9 event variants, forwarded to frontend | `src-tauri/src/events.rs` |
 | Settings store — JSON key/value, upsert-safe | `src-tauri/src/db/settings.rs` |
-| 28 Tauri IPC command handlers across all subsystems | `src-tauri/src/commands/` |
+| 35+ Tauri IPC command handlers across all subsystems | `src-tauri/src/commands/` |
 | Analytics — dashboard stats (total, completed, playtime, favorites, genres) | `src-tauri/src/commands/analytics.rs` |
 | Analytics — daily activity heatmap aggregation (configurable window) | `src-tauri/src/commands/analytics.rs` |
 | `MetadataProvider` async trait + offline no-op fallback | `src-tauri/src/metadata/` |
@@ -43,19 +46,19 @@ All items below are fully implemented, tested, and passing `cargo check` + `carg
 | Component | Location |
 |-----------|----------|
 | TypeScript types — all Rust models mirrored exactly | `src/types/index.ts` |
-| IPC wrapper — 28 typed commands + event listener helper | `src/lib/ipc.ts` |
-| Zustand library store — optimistic updates with rollback, search + filter | `src/stores/library.ts` |
-| Dashboard — stats cards, 90-day activity chart, recently played | `src/pages/Dashboard.tsx` |
-| Library — game grid, tab filters (All/Favorites/Playing/Backlog/Completed) | `src/pages/Library.tsx` |
-| Game details — state mutations, playtime/rating display, sub-page links | `src/pages/GameDetails.tsx` |
+| IPC wrapper — typed commands for all subsystems + event listener helper | `src/lib/ipc.ts` |
+| Image utility — `toImgSrc()` using `convertFileSrc` for local paths | `src/lib/image.ts` |
+| Zustand library store — optimistic updates, search, filter, sort (5 modes, persisted) | `src/stores/library.ts` |
+| Dashboard — stats cards, 90-day chart, recently played with cover art, top genres; event refresh | `src/pages/Dashboard.tsx` |
+| Library — game grid, tab filters, 5 sort options (title/playtime/last played/added) | `src/pages/Library.tsx` |
+| Game details — hero banner, Artwork section (cover+hero pickers), state, installations, notes | `src/pages/GameDetails.tsx` |
 | Achievements — unlock toggle, create form, delete, unlock % | `src/pages/Achievements.tsx` |
-| Save manager — profile creation, backup, list, restore | `src/pages/SaveManager.tsx` |
+| Save manager — detection panel, Auto/Manual badges, delete, backup/restore | `src/pages/SaveManager.tsx` |
 | Analytics — 365-day SVG heatmap with color intensity | `src/pages/Analytics.tsx` |
 | Timeline — session history list (200 sessions max) | `src/pages/Timeline.tsx` |
-| Settings — scan path add/remove, folder picker, preferences, app info | `src/pages/Settings.tsx` |
-| Sidebar, TopBar, GameCard (cover/initials fallback, badges) | `src/components/` |
+| Settings — scan path add/remove, import executable, folder picker, preferences | `src/pages/Settings.tsx` |
+| Sidebar, TopBar (search wired to library store), GameCard (cover via `convertFileSrc`) | `src/components/` |
 | Toast notification system — auto-dismiss, stacks up to 5 | `src/components/ToastContainer.tsx` |
-| Play button — disabled when no launchable installation | `src/pages/GameDetails.tsx` |
 
 ---
 
@@ -168,11 +171,10 @@ npm run tauri:dev
 
 | Feature | What's needed |
 |---------|---------------|
-| Live metadata provider | Implement `MetadataProvider` trait for IGDB or RAWG; fetch cover art, release year, developer, publisher, genres; store result in `games.metadata_json` and `games.cover_path` |
+| Live metadata provider | Implement `MetadataProvider` trait for IGDB or RAWG; fetch cover art, release year, developer, publisher, genres; store result in `games.metadata_json` and `games.cover_path` (manual cover picking already done) |
 | API key setting | Add metadata provider key field to Settings page; persist in `settings` table under `metadata_api_key` |
-| Genre assignment | After metadata fetch, populate `genres` + `game_genres` tables; expose genre filter tab in Library |
-| Media / screenshots | Tauri commands for `media` table CRUD; UI on GameDetails to browse screenshots and set cover/hero images |
-| Cover art display | Replace initials fallback in `GameCard` with fetched cover image when `cover_path` is populated |
+| Genre assignment | After metadata fetch, populate `genres` + `game_genres` tables; expose genre filter tab in Library (genre display in Dashboard already done) |
+| Media / screenshots | Tauri commands for `media` table CRUD; UI on GameDetails to browse screenshots |
 
 ### Dependencies
 
