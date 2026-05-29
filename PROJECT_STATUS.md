@@ -1,7 +1,7 @@
 # Project Status
 
-**Date:** 2026-05-28
-**Build:** `cargo check` PASS · `npm run build` PASS
+**Date:** 2026-05-29
+**Build:** `cargo check` PASS · `cargo clippy` PASS (0 warnings) · `npm run build` PASS
 
 ---
 
@@ -9,8 +9,9 @@
 
 | Step | Status | Notes |
 |------|--------|-------|
-| `cargo check` | ✅ PASS | 2 deprecation warnings, 0 errors |
-| `npm run build` | ✅ PASS | 1 chunk-size warning, 0 errors |
+| `cargo check` | ✅ PASS | 0 warnings, 0 errors |
+| `cargo clippy` | ✅ PASS | 0 warnings, 0 errors |
+| `npm run build` | ✅ PASS | 1 chunk-size warning (pre-existing, ~579 kB), 0 errors |
 | `npm run tauri build` | Not yet run | Full packaging not validated |
 
 ---
@@ -33,6 +34,7 @@
 | Idle detection | `src-tauri/src/playtime/mod.rs` | Frontend reports idle; tracked separately |
 | Achievement CRUD | `src-tauri/src/db/achievements.rs` | Create, toggle unlock, delete; completion % auto-computed |
 | Game library CRUD | `src-tauri/src/db/games.rs` | Upsert, list, get, favorite, completion state, notes |
+| Game launch | `src-tauri/src/commands/games.rs` | Spawns exe directly; opens `steam://run/<id>` URI for Steam games; starts playtime session |
 | Duplicate game merge | `src-tauri/src/db/games.rs` | Reparents sessions/saves/achievements to survivor |
 | Event bus | `src-tauri/src/events.rs` | `tokio::broadcast`; 9 event variants; forwarded to frontend |
 | Settings store | `src-tauri/src/db/settings.rs` | JSON key/value; upsert-safe |
@@ -52,6 +54,8 @@
 | Settings page | `src/pages/Settings.tsx` | Scan path add/remove, folder picker, preferences, app info |
 | Sidebar + TopBar | `src/components/` | Navigation, search, scan-now button |
 | GameCard component | `src/components/GameCard.tsx` | Cover/initials fallback, favorite/completion badges |
+| Toast notifications | `src/components/ToastContainer.tsx` | Auto-dismiss toasts for scan, backup, achievement, notice events |
+| Play button | `src/pages/GameDetails.tsx` | Launches game via `launch_game` command; disabled when no launchable install |
 
 ---
 
@@ -62,8 +66,6 @@
 | Game metadata | Backend trait + offline stub | `MetadataProvider` async trait defined; `OfflineProvider` returns `None` safely | No live provider (IGDB/RAWG); cover art and rich metadata not fetched |
 | Genre tracking | Schema + aggregation | `genres` and `game_genres` tables created; `top_genres` surfaced in dashboard stats | No UI to assign genres; scanners do not populate genre data |
 | Multi-user profiles | Schema only | `profiles` table seeded with "Default" profile | No UI, no profile switching, no backend profile-scoped queries |
-| Game launch ("Play" button) | Passive side only | Passive watcher detects running processes and creates sessions | No explicit launch button that executes the game binary |
-| In-app notifications | Events only | Backend emits all events; frontend `onEvent()` listener wired in `App.tsx` | No toast/notification UI; events are consumed silently |
 
 ---
 
@@ -137,9 +139,9 @@
 | Timeline (session log) | Complete |
 | Settings (scan paths) | Complete |
 | Mods | Placeholder only |
-| Toast / notification UI | Missing |
-| Game launch button | Missing |
-| Bundle size | 577 kB (~169 kB gzip); exceeds Vite 500 kB soft limit |
+| Toast / notification UI | ✅ Complete — `ToastContainer` auto-dismisses after 4 s |
+| Game launch button | ✅ Complete — Play button in GameDetails, wired to `launch_game` |
+| Bundle size | 579 kB (~170 kB gzip); exceeds Vite 500 kB soft limit (Phase 2 item) |
 
 ### Database Status
 
@@ -170,15 +172,15 @@
 | Rust backend — core infrastructure | 100% |
 | Rust backend — scanners | 40% (Steam + Manual done; Epic/GOG/Xbox missing) |
 | Rust backend — save manager | 100% |
-| Rust backend — playtime | 90% (passive + explicit done; no launch integration) |
+| Rust backend — playtime | 95% (passive + explicit + launch integration; no Steam achievement sync) |
 | Rust backend — achievements | 85% (CRUD done; templates + Steam sync missing) |
 | Rust backend — metadata | 5% (trait defined; no live provider) |
 | Rust backend — mods | 0% |
 | Frontend — core / layout | 100% |
 | Frontend — all pages except mods | 100% |
 | Frontend — mods page | 0% |
-| Frontend — notifications UI | 0% |
-| **Overall** | **~78%** |
+| Frontend — notifications UI | ✅ 100% |
+| **Overall** | **~83%** |
 
 ---
 
@@ -186,24 +188,27 @@
 
 | Warning | File | Severity | Fix |
 |---------|------|----------|-----|
-| `Vdf::parse()` deprecated | `src-tauri/src/scanner/steam.rs:107,132` | Low | Replace with `Vdf::from(Vdf::parse(...))` |
-| JS bundle > 500 kB | Vite output | Low | Code-split with `React.lazy` + dynamic imports |
-| Placeholder icons | `src-tauri/icons/` | Pre-release | Replace with real artwork |
-| `tauri build` not validated | — | Medium | Run full packaging before first release |
+| JS bundle > 500 kB | Vite output | Low | Code-split with `React.lazy` + dynamic imports (Phase 2) |
+| Placeholder icons | `src-tauri/icons/` | Pre-release | Replace with real artwork (Phase 5) |
+| `tauri build` not validated | — | Medium | Run full packaging before first release (Phase 5) |
 
 ---
 
-## Recommended Next Development Phase
+## Phase 1 Completed (2026-05-29)
 
-Priority order based on user-facing impact:
+All Phase 1 items from ROADMAP.md are done:
 
-1. **Game launch integration** — Add a "Play" button to `GameDetails` that resolves the installation executable and launches it via Tauri's `shell` plugin. This closes the loop between library and actual play and makes passive playtime tracking activate naturally.
+- ✅ **Game launch** — `launch_game` command in `commands/games.rs`; Play button in `GameDetails.tsx`; spawns exe directly or opens `steam://run/<id>` URI
+- ✅ **Toast notifications** — `ToastContainer` in `src/components/`; surfaces scan, backup, achievement, and notice events
+- ✅ **Clippy zero-warning** — `cargo clippy` reports 0 warnings (fixed `Vdf::parse()` deprecation × 2, unit-struct `::default()` × 2)
 
-2. **Mods page** — The schema (`mods` table with `enabled`, `load_order`, `source_url`) and page stub are already in place. Wire up backend commands and a simple list UI with enable/disable toggle. Estimated scope: ~200 lines Rust + ~150 lines TypeScript.
+## Recommended Next Development Phase (Phase 2)
 
-3. **Toast / event notifications** — The event bus already fires `AchievementUnlocked`, `BackupCreated`, `ScanCompleted`, etc. Add a lightweight toast component that subscribes to `onEvent()` and surfaces these to the user.
+1. **Mods page** — The schema (`mods` table) and page stub are in place. Wire up backend CRUD commands and a list UI with enable/disable toggle. Estimated: ~200 lines Rust + ~150 lines TypeScript.
 
-4. **Metadata provider (IGDB or RAWG)** — Implement one live `MetadataProvider` to populate cover art and release year. This dramatically improves library visual quality. Requires an API key setting in the Settings page.
+2. **Epic Games Store scanner** — Parse `%PROGRAMDATA%\Epic\EpicGamesLauncher\Data\Manifests\*.item` JSON.
+
+3. **Bundle size reduction** — Vite `manualChunks` to split Recharts and React Router below the 500 kB soft limit.
 
 5. **Additional scanners** — Epic Games Store (`C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests\*.item` JSON) is the next highest install-base target. GOG Galaxy follows.
 
