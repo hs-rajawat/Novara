@@ -356,6 +356,176 @@
   border-color: transparent;
 }
 
+/* ───── Hero banner (Game Details) ───── */
+.game-hero {
+  width: 100%;
+  max-height: 220px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  background: var(--bg-1);
+}
+.game-hero img {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+
+/* ───── Artwork picker (Game Details) ───── */
+.artwork-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.artwork-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.artwork-preview {
+  background: var(--bg-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.artwork-cover {
+  width: 110px;
+  height: 147px;
+}
+.artwork-hero-thumb {
+  width: 260px;
+  height: 110px;
+}
+.artwork-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ───── Sort bar (Library) ───── */
+.sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.sort-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-right: 4px;
+}
+.sort-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+.sort-btn.active {
+  color: var(--text-primary);
+  background: var(--bg-2);
+  border-color: var(--border-strong);
+}
+
+/* ───── Recently played thumbnail (Dashboard) ───── */
+.recent-thumb {
+  width: 40px;
+  height: 54px;
+  flex: 0 0 40px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+.recent-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ───── Genre chips (Dashboard) ───── */
+.genre-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.genre-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+.genre-name {
+  font-weight: 500;
+}
+.genre-count {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+/* ───── Save detection panel ───── */
+.save-detection {
+  background: var(--bg-1);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.save-detection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.save-detection-empty {
+  padding: 20px 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.save-detection-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.save-detection-row:last-child {
+  border-bottom: none;
+}
+
+/* ───── Save profile badges ───── */
+.save-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.save-badge.auto {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent-2);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.save-badge.manual {
+  background: rgba(124, 92, 255, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(124, 92, 255, 0.3);
+}
+
 /* ───── Toasts ───── */
 .toast-container {
   position: fixed;

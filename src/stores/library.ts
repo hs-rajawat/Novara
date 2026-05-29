@@ -5,15 +5,30 @@ import { create } from "zustand";
 import { api } from "@/lib/ipc";
 import type { Game } from "@/types";
 
+export type SortMode =
+  | "title_asc"
+  | "title_desc"
+  | "playtime"
+  | "last_played"
+  | "added";
+
+const SORT_KEY = "library_sort";
+
+function loadSort(): SortMode {
+  return (localStorage.getItem(SORT_KEY) as SortMode) ?? "title_asc";
+}
+
 interface LibraryState {
   games: Game[];
   loading: boolean;
   error: string | null;
   query: string;
   filter: "all" | "favorites" | "playing" | "completed" | "backlog";
+  sort: SortMode;
   load: () => Promise<void>;
   setQuery: (q: string) => void;
   setFilter: (f: LibraryState["filter"]) => void;
+  setSort: (s: SortMode) => void;
   toggleFavorite: (id: string) => Promise<void>;
 }
 
@@ -23,6 +38,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   error: null,
   query: "",
   filter: "all",
+  sort: loadSort(),
   load: async () => {
     set({ loading: true, error: null });
     try {
@@ -34,11 +50,14 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   },
   setQuery: (query) => set({ query }),
   setFilter: (filter) => set({ filter }),
+  setSort: (sort) => {
+    localStorage.setItem(SORT_KEY, sort);
+    set({ sort });
+  },
   toggleFavorite: async (id) => {
     const target = get().games.find((g) => g.id === id);
     if (!target) return;
-    const next = target.is_favorite ? false : true;
-    // Optimistic — revert on failure.
+    const next = !target.is_favorite;
     set({
       games: get().games.map((g) =>
         g.id === id ? { ...g, is_favorite: next ? 1 : 0 } : g
@@ -55,7 +74,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 
 export function selectVisibleGames(state: LibraryState): Game[] {
   const q = state.query.trim().toLowerCase();
-  return state.games.filter((g) => {
+  const filtered = state.games.filter((g) => {
     if (q && !g.title.toLowerCase().includes(q)) return false;
     switch (state.filter) {
       case "favorites":
@@ -68,6 +87,26 @@ export function selectVisibleGames(state: LibraryState): Game[] {
         return g.completion_state === "backlog";
       default:
         return true;
+    }
+  });
+
+  return filtered.slice().sort((a, b) => {
+    switch (state.sort) {
+      case "title_desc":
+        return b.sort_title.localeCompare(a.sort_title);
+      case "playtime":
+        return b.total_playtime_seconds - a.total_playtime_seconds;
+      case "last_played": {
+        if (!a.last_played_at && !b.last_played_at) return 0;
+        if (!a.last_played_at) return 1;
+        if (!b.last_played_at) return -1;
+        return b.last_played_at.localeCompare(a.last_played_at);
+      }
+      case "added":
+        return b.added_at.localeCompare(a.added_at);
+      default:
+        // title_asc
+        return a.sort_title.localeCompare(b.sort_title);
     }
   });
 }

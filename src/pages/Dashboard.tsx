@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "@/lib/ipc";
+import { api, onEvent } from "@/lib/ipc";
+import { toImgSrc } from "@/lib/image";
 import type { DashboardStats, HeatmapCell } from "@/types";
 import { formatPlaytime, formatRelative } from "@/lib/format";
 import { Link } from "react-router-dom";
@@ -16,9 +17,37 @@ export function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [heat, setHeat] = useState<HeatmapCell[]>([]);
 
+  async function loadStats() {
+    const [s, h] = await Promise.all([
+      api.dashboardStats(),
+      api.heatmap(90),
+    ]);
+    setStats(s);
+    setHeat(h);
+  }
+
   useEffect(() => {
-    api.dashboardStats().then(setStats).catch(console.error);
-    api.heatmap(90).then(setHeat).catch(console.error);
+    loadStats().catch(console.error);
+  }, []);
+
+  // Refresh when gameplay or scan events arrive.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    onEvent((ev) => {
+      if (
+        ev.type === "scan_finished" ||
+        ev.type === "session_ended" ||
+        ev.type === "game_added" ||
+        ev.type === "game_updated"
+      ) {
+        loadStats().catch(console.error);
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   if (!stats) return <div className="empty">Loading…</div>;
@@ -64,7 +93,7 @@ export function Dashboard() {
       >
         {chartData.length === 0 ? (
           <div className="empty" style={{ padding: 40 }}>
-            No play sessions yet — sessions appear here once you start playing.
+            No sessions yet — sessions appear here once you play a game.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
@@ -104,28 +133,57 @@ export function Dashboard() {
 
       {stats.recently_played.length === 0 ? (
         <div className="empty">
-          <h3>No games yet</h3>
-          <div>Add a scan path in Settings, then press “Scan now”.</div>
+          <h3>No games played yet</h3>
+          <div>
+            Add a scan path in Settings, run a scan, then press ▶ Play on any
+            game to see it here.
+          </div>
         </div>
       ) : (
-        <div className="list">
-          {stats.recently_played.map((g) => (
-            <Link
-              key={g.id}
-              to={`/library/${g.id}`}
-              className="list-row"
-              style={{ color: "inherit" }}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>{g.title}</div>
-                <div className="small muted">
-                  {formatRelative(g.last_played_at)} ·{" "}
-                  {formatPlaytime(g.total_playtime_seconds)}
+        <div className="list" style={{ marginBottom: 28 }}>
+          {stats.recently_played.map((g) => {
+            const cover = toImgSrc(g.cover_path);
+            return (
+              <Link
+                key={g.id}
+                to={`/library/${g.id}`}
+                className="list-row"
+                style={{ color: "inherit" }}
+              >
+                <div className="recent-thumb">
+                  {cover ? (
+                    <img src={cover} alt={g.title} />
+                  ) : (
+                    <span>{g.title.slice(0, 2).toUpperCase()}</span>
+                  )}
                 </div>
-              </div>
-            </Link>
-          ))}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600 }}>{g.title}</div>
+                  <div className="small muted">
+                    {formatRelative(g.last_played_at)} ·{" "}
+                    {formatPlaytime(g.total_playtime_seconds)}
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
+      )}
+
+      {stats.top_genres.length > 0 && (
+        <>
+          <div className="section-header">
+            <h2>Top genres</h2>
+          </div>
+          <div className="genre-chips" style={{ marginBottom: 28 }}>
+            {stats.top_genres.map((g) => (
+              <div key={g.name} className="genre-chip">
+                <span className="genre-name">{g.name}</span>
+                <span className="genre-count">{g.count}</span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </>
   );

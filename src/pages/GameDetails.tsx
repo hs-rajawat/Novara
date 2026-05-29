@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "@/lib/ipc";
+import { toImgSrc } from "@/lib/image";
 import type { CompletionState, GameWithInstalls, Installation } from "@/types";
 import { formatBytes, formatPlaytime, formatRelative } from "@/lib/format";
 
@@ -12,6 +13,8 @@ const STATES: CompletionState[] = [
   "completed",
   "abandoned",
 ];
+
+const IMG_FILTERS = [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp"] }];
 
 export function GameDetails() {
   const { id = "" } = useParams();
@@ -70,8 +73,32 @@ export function GameDetails() {
     setGame(refreshed);
   }
 
+  async function pickCover() {
+    const picked = await open({ multiple: false, filters: IMG_FILTERS });
+    if (!picked || Array.isArray(picked)) return;
+    const stored = await api.setCoverPath(id, picked as string);
+    setGame((prev) => prev ? { ...prev, cover_path: stored } : prev);
+  }
+
+  async function pickHero() {
+    const picked = await open({ multiple: false, filters: IMG_FILTERS });
+    if (!picked || Array.isArray(picked)) return;
+    const stored = await api.setHeroPath(id, picked as string);
+    setGame((prev) => prev ? { ...prev, hero_path: stored } : prev);
+  }
+
+  const hero = toImgSrc(game.hero_path);
+  const cover = toImgSrc(game.cover_path);
+
   return (
     <>
+      {/* Hero banner */}
+      {hero && (
+        <div className="game-hero">
+          <img src={hero} alt={`${game.title} banner`} />
+        </div>
+      )}
+
       <div className="row spread" style={{ marginBottom: 20 }}>
         <div>
           <Link to="/library" className="muted small">
@@ -135,6 +162,37 @@ export function GameDetails() {
             {s}
           </button>
         ))}
+      </div>
+
+      {/* Artwork */}
+      <div className="section-header">
+        <h2>Artwork</h2>
+      </div>
+      <div className="artwork-row" style={{ marginBottom: 24 }}>
+        <div className="artwork-slot">
+          <div className="artwork-preview artwork-cover">
+            {cover ? (
+              <img src={cover} alt="Cover" />
+            ) : (
+              <span className="muted small">No cover</span>
+            )}
+          </div>
+          <button className="btn btn-ghost small" onClick={pickCover}>
+            {cover ? "Change cover…" : "Set cover…"}
+          </button>
+        </div>
+        <div className="artwork-slot">
+          <div className="artwork-preview artwork-hero-thumb">
+            {hero ? (
+              <img src={hero} alt="Hero" />
+            ) : (
+              <span className="muted small">No hero / banner</span>
+            )}
+          </div>
+          <button className="btn btn-ghost small" onClick={pickHero}>
+            {hero ? "Change hero…" : "Set hero…"}
+          </button>
+        </div>
       </div>
 
       <div className="section-header">

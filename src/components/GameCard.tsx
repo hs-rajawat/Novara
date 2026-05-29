@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { Game } from "@/types";
 import { formatPlaytime } from "@/lib/format";
+import { toImgSrc } from "@/lib/image";
 
 interface Props {
   game: Game;
@@ -14,11 +15,13 @@ export function GameCard({ game }: Props) {
     .join("")
     .toUpperCase();
 
+  const cover = toImgSrc(game.cover_path);
+
   return (
     <Link to={`/library/${game.id}`} className="game-card">
       <div className="game-cover">
-        {game.cover_path ? (
-          <img src={convertCover(game.cover_path)} alt={game.title} />
+        {cover ? (
+          <img src={cover} alt={game.title} />
         ) : (
           <span style={{ fontSize: 32, color: "var(--text-tertiary)" }}>
             {initials}
@@ -39,13 +42,4 @@ export function GameCard({ game }: Props) {
       </div>
     </Link>
   );
-}
-
-function convertCover(path: string): string {
-  // Tauri assets get loaded via the `asset:` protocol; for local file
-  // paths in user data we'd use `convertFileSrc`. Keep raw for now —
-  // assets are added once a metadata provider downloads covers.
-  return path.startsWith("http") || path.startsWith("data:")
-    ? path
-    : path;
 }

@@ -6,6 +6,7 @@ import type {
   Achievement,
   AppEvent,
   DashboardStats,
+  DetectedSavePath,
   Game,
   GameWithInstalls,
   HeatmapCell,
@@ -40,6 +41,10 @@ export const api = {
     invoke<string>("import_executable", { exePath }),
   setInstallationExecutable: (installationId: string, exePath: string) =>
     invoke<void>("set_installation_executable", { installationId, exePath }),
+  setCoverPath: (gameId: string, imagePath: string) =>
+    invoke<string>("set_cover_path", { gameId, imagePath }),
+  setHeroPath: (gameId: string, imagePath: string) =>
+    invoke<string>("set_hero_path", { gameId, imagePath }),
 
   // scan
   scanNow: () => invoke<ScanReport[]>("scan_paths_now"),
@@ -72,7 +77,12 @@ export const api = {
     source_dir: string;
     glob?: string;
     auto_backup?: boolean;
+    is_manual_override?: boolean;
   }) => invoke<SaveProfile>("create_save_profile", { input }),
+  deleteSaveProfile: (profileId: string) =>
+    invoke<void>("delete_save_profile", { profileId }),
+  detectSavePaths: (gameId: string) =>
+    invoke<DetectedSavePath[]>("detect_save_paths", { gameId }),
   backupNow: (profileId: string, note?: string) =>
     invoke<{
       backup_id: number;

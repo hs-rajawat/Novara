@@ -74,6 +74,16 @@ export interface SaveProfile {
   glob: string | null;
   auto_backup: number;
   created_at: string;
+  /** 1 when the user manually chose this folder; 0 = auto-detected. */
+  is_manual_override: number;
+}
+
+export interface DetectedSavePath {
+  path: string;
+  /** 0.0 – 1.0, higher = more likely correct. */
+  confidence: number;
+  /** Human-readable hint about which heuristic matched. */
+  hint: string;
 }
 
 export interface SaveBackup {
