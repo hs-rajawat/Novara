@@ -585,12 +585,67 @@ a.list-row {
   opacity: 0;
 }
 
+/* ═══════════ Carousel ═══════════ */
+
+.carousel {
+  margin-bottom: 30px;
+}
+
+.carousel-track {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  padding: 2px 2px 12px;
+  margin: 0 -2px;
+}
+
+.carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+.carousel-track > * {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+.carousel-track .game-card {
+  width: 190px;
+}
+
+.carousel-arrow {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-2);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  transition: background var(--dur-fast), border-color var(--dur-fast),
+              color var(--dur-fast), opacity var(--dur-fast);
+}
+
+.carousel-arrow:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.carousel-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* ═══════════ Game grid & cards ═══════════ */
 
 .game-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
 }
 
 .game-card {
@@ -605,6 +660,9 @@ a.list-row {
   transition: transform var(--dur-med) var(--ease-out),
               box-shadow var(--dur-med) var(--ease-out),
               border-color var(--dur-fast);
+  /* Large libraries: skip layout/paint for cards scrolled out of view. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 260px;
 }
 
 .game-card:hover {
@@ -655,8 +713,82 @@ a.list-row {
   transform: translateY(0);
 }
 
+/* Hover-revealed Play / Favorite / Details overlay. */
+.quick-actions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: linear-gradient(180deg, rgba(7, 10, 18, 0.1), rgba(7, 10, 18, 0.5));
+  opacity: 0;
+  transition: opacity var(--dur-med) var(--ease-out);
+  pointer-events: none;
+}
+
+.game-card:hover .quick-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.qa-btn {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(7, 10, 18, 0.7);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border-soft);
+  color: var(--text-primary);
+  transform: translateY(6px) scale(0.92);
+  opacity: 0;
+  transition: transform var(--dur-med) var(--ease-spring), opacity var(--dur-med) var(--ease-out),
+              background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
+}
+
+.game-card:hover .qa-btn {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.qa-btn:hover {
+  background: var(--gradient-accent);
+  border-color: transparent;
+  color: white;
+}
+
+.qa-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.qa-play {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  background: var(--gradient-accent);
+  color: white;
+  box-shadow: var(--accent-glow);
+}
+
+.qa-btn.is-on {
+  color: var(--warning);
+  border-color: rgba(250, 204, 21, 0.4);
+}
+
+.qa-btn.is-on svg {
+  fill: currentColor;
+}
+
 .game-meta {
   padding: 10px 12px 11px;
+}
+
+.game-meta .platform-badge {
+  margin-top: 8px;
 }
 
 .game-title {
@@ -840,6 +972,42 @@ a.list-row {
   border-radius: 999px;
   background-color: var(--bg-1);
 }
+
+/* ═══════════ Platform badge ═══════════ */
+
+.platform-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.platform-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--platform-tone, var(--text-tertiary));
+}
+
+.platform-badge.tone-steam    { --platform-tone: #66c0f4; }
+.platform-badge.tone-epic     { --platform-tone: #e2e8f0; }
+.platform-badge.tone-gog      { --platform-tone: #b389f9; }
+.platform-badge.tone-xbox     { --platform-tone: #6fd66f; }
+.platform-badge.tone-ubisoft  { --platform-tone: #6fb8ff; }
+.platform-badge.tone-battle   { --platform-tone: #7ea6ff; }
+.platform-badge.tone-emulator { --platform-tone: #4adecb; }
+.platform-badge.tone-manual,
+.platform-badge.tone-default  { --platform-tone: var(--text-tertiary); }
 
 /* ═══════════ Chips ═══════════ */
 

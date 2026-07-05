@@ -108,6 +108,7 @@ const ICONS = {
     </>
   ),
   "chevron-right": <path d="m9 18 6-6-6-6" />,
+  "chevron-left": <path d="m15 18-6-6 6-6" />,
   "arrow-left": (
     <>
       <path d="m12 19-7-7 7-7" />

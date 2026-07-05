@@ -1,8 +1,13 @@
+import { useState, type MouseEvent } from "react";
 import { Link } from "react-router-dom";
+import clsx from "clsx";
 import type { Game } from "@/types";
 import { formatPlaytime, formatRelative } from "@/lib/format";
 import { GameArtwork } from "@/components/GameArtwork";
+import { PlatformBadge } from "@/components/PlatformBadge";
 import { Icon } from "@/components/Icon";
+import { api } from "@/lib/ipc";
+import { useLibrary } from "@/stores/library";
 
 interface Props {
   game: Game;
@@ -11,6 +16,27 @@ interface Props {
 }
 
 export function GameCard({ game, index = 0 }: Props) {
+  const toggleFavorite = useLibrary((s) => s.toggleFavorite);
+  const [launching, setLaunching] = useState(false);
+
+  async function handlePlay(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (launching) return;
+    setLaunching(true);
+    try {
+      await api.launchGame(game.id);
+    } finally {
+      setLaunching(false);
+    }
+  }
+
+  function handleFavorite(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFavorite(game.id);
+  }
+
   return (
     <Link
       to={`/library/${game.id}`}
@@ -24,16 +50,38 @@ export function GameCard({ game, index = 0 }: Props) {
             <Icon name="star" size={13} />
           </span>
         ) : null}
-        {game.completion_state === "completed" && (
+        {game.completion_pct > 0 && (
           <span className="badge">
             <Icon name="check" size={10} />
-            100%
+            {Math.round(game.completion_pct)}%
           </span>
         )}
         <div className="cover-shade">
           {game.last_played_at
             ? `Played ${formatRelative(game.last_played_at)}`
             : "Never played"}
+        </div>
+        <div className="quick-actions">
+          <button
+            type="button"
+            className="qa-btn qa-play"
+            onClick={handlePlay}
+            disabled={launching}
+            title="Play"
+          >
+            <Icon name={launching ? "refresh" : "play"} size={16} className={launching ? "spin" : undefined} />
+          </button>
+          <button
+            type="button"
+            className={clsx("qa-btn", game.is_favorite && "is-on")}
+            onClick={handleFavorite}
+            title={game.is_favorite ? "Remove from favorites" : "Add to favorites"}
+          >
+            <Icon name="star" size={15} />
+          </button>
+          <span className="qa-btn qa-details" title="View details">
+            <Icon name="chevron-right" size={16} />
+          </span>
         </div>
       </div>
       <div className="game-meta">
@@ -45,6 +93,7 @@ export function GameCard({ game, index = 0 }: Props) {
           {formatPlaytime(game.total_playtime_seconds)} ·{" "}
           <span className="cap">{game.completion_state}</span>
         </div>
+        <PlatformBadge code={game.primary_source_code} label={game.primary_source_label} />
       </div>
     </Link>
   );
