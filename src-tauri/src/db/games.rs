@@ -1,5 +1,7 @@
 //! Game repository: list, get, upsert, merge.
 
+use std::collections::HashMap;
+
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
@@ -144,6 +146,50 @@ impl Db {
             .bind(id)
             .fetch_optional(&self.pool)
             .await?)
+    }
+
+    /// (source code, source display name) for each game's primary
+    /// installation, keyed by game_id. Used to render platform badges
+    /// without an N+1 IPC call per card.
+    ///
+    /// `is_primary` isn't a real unique constraint (every scanned
+    /// installation is inserted with `is_primary = 1`), so ties are broken
+    /// by earliest `detected_at` and the first match per game wins.
+    pub async fn list_primary_sources(&self) -> AppResult<HashMap<String, (String, String)>> {
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            r#"
+            SELECT gi.game_id, s.code, s.display_name
+            FROM game_installations gi
+            JOIN sources s ON s.id = gi.source_id
+            ORDER BY gi.game_id, gi.is_primary DESC, gi.detected_at ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut map = HashMap::with_capacity(rows.len());
+        for (game_id, code, label) in rows {
+            map.entry(game_id).or_insert((code, label));
+        }
+        Ok(map)
+    }
+
+    /// Single-game counterpart of [`Db::list_primary_sources`], for the
+    /// `get_game` detail path.
+    pub async fn get_primary_source(&self, game_id: &str) -> AppResult<Option<(String, String)>> {
+        Ok(sqlx::query_as(
+            r#"
+            SELECT s.code, s.display_name
+            FROM game_installations gi
+            JOIN sources s ON s.id = gi.source_id
+            WHERE gi.game_id = ?1
+            ORDER BY gi.is_primary DESC, gi.detected_at ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(game_id)
+        .fetch_optional(&self.pool)
+        .await?)
     }
 
     pub async fn list_installations(&self, game_id: &str) -> AppResult<Vec<Installation>> {

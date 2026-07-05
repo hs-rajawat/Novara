@@ -1,5 +1,11 @@
 // Mirrors the Rust models exactly. Keep in sync with src-tauri/src/models.rs.
-
+//
+// `primary_source_code`/`primary_source_label` aren't columns on the `games`
+// table — they're resolved server-side (src-tauri/src/commands/games.rs,
+// `GameSummary`/`GameWithInstalls`) from the game's primary installation and
+// flattened onto every `list_games`/`get_game` response, so they're safe to
+// treat as part of `Game` on the frontend even though `Db::get_game`'s raw
+// row doesn't carry them.
 export interface Game {
   id: string;
   title: string;
@@ -23,6 +29,8 @@ export interface Game {
   last_played_at: string | null;
   added_at: string;
   updated_at: string;
+  primary_source_code: string | null;
+  primary_source_label: string | null;
 }
 
 export type CompletionState =

@@ -72,19 +72,44 @@ pub async fn set_hero_path(
     Ok(stored)
 }
 
+/// `list_games` row shape: the plain `Game` row plus its primary
+/// installation's platform, resolved in bulk so the Library grid can render
+/// platform badges without a per-card round trip.
+#[derive(serde::Serialize)]
+pub struct GameSummary {
+    #[serde(flatten)]
+    pub game: Game,
+    pub primary_source_code: Option<String>,
+    pub primary_source_label: Option<String>,
+}
+
 #[derive(serde::Serialize)]
 pub struct GameWithInstalls {
     #[serde(flatten)]
     pub game: Game,
     pub installations: Vec<Installation>,
+    pub primary_source_code: Option<String>,
+    pub primary_source_label: Option<String>,
 }
 
 #[tauri::command]
 pub async fn list_games(
     include_hidden: Option<bool>,
     state: State<'_, Arc<AppState>>,
-) -> AppResult<Vec<Game>> {
-    state.db.list_games(include_hidden.unwrap_or(false)).await
+) -> AppResult<Vec<GameSummary>> {
+    let games = state.db.list_games(include_hidden.unwrap_or(false)).await?;
+    let sources = state.db.list_primary_sources().await?;
+    Ok(games
+        .into_iter()
+        .map(|g| {
+            let source = sources.get(&g.id).cloned();
+            GameSummary {
+                primary_source_code: source.as_ref().map(|(code, _)| code.clone()),
+                primary_source_label: source.map(|(_, label)| label),
+                game: g,
+            }
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -96,7 +121,13 @@ pub async fn get_game(
         return Ok(None);
     };
     let installations = state.db.list_installations(&id).await?;
-    Ok(Some(GameWithInstalls { game, installations }))
+    let source = state.db.get_primary_source(&id).await?;
+    Ok(Some(GameWithInstalls {
+        game,
+        installations,
+        primary_source_code: source.as_ref().map(|(code, _)| code.clone()),
+        primary_source_label: source.map(|(_, label)| label),
+    }))
 }
 
 #[tauri::command]
