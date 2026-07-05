@@ -1,25 +1,27 @@
 import { Link, useParams } from "react-router-dom";
+import { Icon } from "@/components/Icon";
+import { EmptyState } from "@/components/EmptyState";
 
 export function Mods() {
   const { id = "" } = useParams();
   return (
     <>
-      <div style={{ marginBottom: 16 }}>
-        <Link to={`/library/${id}`} className="muted small">
-          ← Game
+      <div className="page-head fade-up">
+        <Link to={`/library/${id}`} className="back-link">
+          <Icon name="arrow-left" size={14} />
+          Game
         </Link>
-        <h2 style={{ margin: "6px 0 2px" }}>Mods</h2>
-        <div className="muted small">
+        <h2 className="page-title" style={{ marginTop: 8 }}>
+          Mods
+        </h2>
+        <div className="page-sub">
           Filesystem-indexed mods with enable/disable + load order.
         </div>
       </div>
-      <div className="empty">
-        <h3>Mod tracking — coming next</h3>
-        <div>
-          The data model is ready (mods table). Wire a per-game mods folder
-          watcher to populate it.
-        </div>
-      </div>
+      <EmptyState icon="package" title="Mod tracking — coming next">
+        The data model is ready (mods table). Wire a per-game mods folder
+        watcher to populate it.
+      </EmptyState>
     </>
   );
 }

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
+import clsx from "clsx";
 import { api } from "@/lib/ipc";
+import { Icon } from "@/components/Icon";
 
 export function Settings() {
   const navigate = useNavigate();
@@ -43,7 +45,9 @@ export function Settings() {
   async function importExe() {
     const picked = await open({
       multiple: false,
-      filters: [{ name: "Executables", extensions: ["exe", "bat", "sh", "AppImage"] }],
+      filters: [
+        { name: "Executables", extensions: ["exe", "bat", "sh", "AppImage"] },
+      ],
     });
     if (!picked || Array.isArray(picked)) return;
     const gameId = await api.importExecutable(picked);
@@ -52,48 +56,69 @@ export function Settings() {
 
   return (
     <>
+      <div className="page-head fade-up">
+        <h2 className="page-title">Settings</h2>
+        <div className="page-sub">Scanning, privacy, and app information.</div>
+      </div>
+
       <div className="section-header">
-        <h2>Scan paths</h2>
+        <h2>
+          <Icon name="folder" size={15} />
+          Scan paths
+        </h2>
         <span className="sub">
           Folders GameVault will check for manually-installed games.
         </span>
       </div>
 
-      <div className="list" style={{ marginBottom: 12 }}>
+      <div className="list fade-up" style={{ marginBottom: 12 }}>
         {paths.length === 0 ? (
           <div className="list-row muted">No paths configured</div>
         ) : (
           paths.map((p) => (
             <div key={p} className="list-row">
-              <div
-                style={{
-                  flex: 1,
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 12,
-                }}
-              >
+              <Icon
+                name="folder"
+                size={15}
+                style={{ color: "var(--text-tertiary)", flex: "0 0 auto" }}
+              />
+              <div className="mono" style={{ flex: 1, minWidth: 0 }}>
                 {p}
               </div>
-              <button className="btn btn-ghost" onClick={() => remove(p)}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => remove(p)}
+                title="Remove this scan path"
+              >
+                <Icon name="trash" size={13} />
                 Remove
               </button>
             </div>
           ))
         )}
       </div>
-      <div className="row" style={{ marginTop: 12 }}>
+      <div className="row" style={{ marginTop: 12, marginBottom: 8 }}>
         <button className="btn btn-primary" onClick={pick}>
-          Add folder…
+          <Icon name="plus" size={14} />
+          Add folder
         </button>
-        <button className="btn" onClick={importExe} title="Import a single game by selecting its executable directly">
-          Import executable…
+        <button
+          className="btn"
+          onClick={importExe}
+          title="Import a single game by selecting its executable directly"
+        >
+          <Icon name="gamepad" size={14} />
+          Import executable
         </button>
       </div>
 
       <div className="section-header" style={{ marginTop: 32 }}>
-        <h2>Privacy</h2>
+        <h2>
+          <Icon name="shield" size={15} />
+          Privacy
+        </h2>
       </div>
-      <div className="list">
+      <div className="list fade-up" style={{ animationDelay: "60ms" }}>
         <Toggle
           label="Telemetry"
           desc="Off by default. GameVault never sends data anywhere."
@@ -109,21 +134,19 @@ export function Settings() {
       </div>
 
       <div className="section-header" style={{ marginTop: 32 }}>
-        <h2>About</h2>
+        <h2>
+          <Icon name="info" size={15} />
+          About
+        </h2>
       </div>
-      <div className="list">
+      <div className="list fade-up" style={{ animationDelay: "120ms" }}>
         <div className="list-row">
           <div style={{ flex: 1 }}>Version</div>
-          <div className="muted small">{appInfo?.version ?? "—"}</div>
+          <span className="chip">{appInfo?.version ?? "—"}</span>
         </div>
         <div className="list-row">
           <div style={{ flex: 1 }}>Data directory</div>
-          <div
-            className="muted small"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
-            {appInfo?.data_dir ?? "—"}
-          </div>
+          <div className="mono muted">{appInfo?.data_dir ?? "—"}</div>
         </div>
       </div>
     </>
@@ -148,11 +171,12 @@ function Toggle({
         <div className="muted small">{desc}</div>
       </div>
       <button
-        className={`check ${value ? "on" : ""}`}
+        className={clsx("switch", value && "on")}
+        role="switch"
+        aria-checked={value}
+        aria-label={label}
         onClick={() => onChange(!value)}
-      >
-        {value ? "✓" : ""}
-      </button>
+      />
     </div>
   );
 }

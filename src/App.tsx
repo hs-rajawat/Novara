@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
@@ -20,6 +20,7 @@ import { onEvent } from "@/lib/ipc";
 
 export default function App() {
   const load = useLibrary((s) => s.load);
+  const loc = useLocation();
 
   // Initial library load + subscribe to backend events to refresh.
   useEffect(() => {
@@ -47,7 +48,8 @@ export default function App() {
       <Sidebar />
       <div className="main">
         <TopBar />
-        <div className="content">
+        {/* Keyed by path so the enter animation replays on navigation. */}
+        <div className="content" key={loc.pathname}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />

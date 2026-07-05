@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
+import clsx from "clsx";
 import { api } from "@/lib/ipc";
 import { toImgSrc } from "@/lib/image";
+import { coverGradient } from "@/lib/color";
 import type { CompletionState, GameWithInstalls, Installation } from "@/types";
 import { formatBytes, formatPlaytime, formatRelative } from "@/lib/format";
+import { Icon } from "@/components/Icon";
+import { StatCard } from "@/components/StatCard";
 
 const STATES: CompletionState[] = [
   "unplayed",
@@ -14,7 +18,9 @@ const STATES: CompletionState[] = [
   "abandoned",
 ];
 
-const IMG_FILTERS = [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp"] }];
+const IMG_FILTERS = [
+  { name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp"] },
+];
 
 export function GameDetails() {
   const { id = "" } = useParams();
@@ -30,18 +36,22 @@ export function GameDetails() {
     });
   }, [id]);
 
-  if (!game) return <div className="empty">Loading…</div>;
+  if (!game) {
+    return (
+      <div className="skeleton-card" style={{ height: 250 }}>
+        <div className="shimmer" style={{ height: "100%" }} />
+      </div>
+    );
+  }
 
   async function setState(s: CompletionState) {
     await api.setCompletion(id, game!.completion_pct, s);
-    const refreshed = await api.getGame(id);
-    setGame(refreshed);
+    setGame(await api.getGame(id));
   }
 
   async function fav() {
     await api.setFavorite(id, !game!.is_favorite);
-    const refreshed = await api.getGame(id);
-    setGame(refreshed);
+    setGame(await api.getGame(id));
   }
 
   async function saveNotes() {
@@ -65,98 +75,159 @@ export function GameDetails() {
   async function browseExe(installationId: string) {
     const picked = await open({
       multiple: false,
-      filters: [{ name: "Executables", extensions: ["exe", "bat", "sh", "AppImage"] }],
+      filters: [
+        { name: "Executables", extensions: ["exe", "bat", "sh", "AppImage"] },
+      ],
     });
     if (!picked || Array.isArray(picked)) return;
     await api.setInstallationExecutable(installationId, picked as string);
-    const refreshed = await api.getGame(id);
-    setGame(refreshed);
+    setGame(await api.getGame(id));
   }
 
   async function pickCover() {
     const picked = await open({ multiple: false, filters: IMG_FILTERS });
     if (!picked || Array.isArray(picked)) return;
     const stored = await api.setCoverPath(id, picked as string);
-    setGame((prev) => prev ? { ...prev, cover_path: stored } : prev);
+    setGame((prev) => (prev ? { ...prev, cover_path: stored } : prev));
   }
 
   async function pickHero() {
     const picked = await open({ multiple: false, filters: IMG_FILTERS });
     if (!picked || Array.isArray(picked)) return;
     const stored = await api.setHeroPath(id, picked as string);
-    setGame((prev) => prev ? { ...prev, hero_path: stored } : prev);
+    setGame((prev) => (prev ? { ...prev, hero_path: stored } : prev));
   }
 
   const hero = toImgSrc(game.hero_path);
   const cover = toImgSrc(game.cover_path);
+  const initials = game.title
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase();
 
   return (
     <>
-      {/* Hero banner */}
-      {hero && (
-        <div className="game-hero">
+      {/* Hero banner with floating cover */}
+      <div className="details-hero fade-up">
+        <Link to="/library" className="details-back">
+          <Icon name="arrow-left" size={14} />
+          Library
+        </Link>
+        {hero ? (
           <img src={hero} alt={`${game.title} banner`} />
-        </div>
-      )}
+        ) : (
+          <div
+            className="details-hero-fallback"
+            style={{ background: coverGradient(game.title) }}
+          />
+        )}
+      </div>
 
-      <div className="row spread" style={{ marginBottom: 20 }}>
-        <div>
-          <Link to="/library" className="muted small">
-            ← Library
-          </Link>
-          <h2 style={{ margin: "6px 0 2px" }}>{game.title}</h2>
-          <div className="muted small">
+      <div className="details-head">
+        <div className="details-cover fade-up" style={{ animationDelay: "60ms" }}>
+          {cover ? (
+            <img src={cover} alt={`${game.title} cover`} />
+          ) : (
+            <div
+              className="cover-fallback"
+              style={{ background: coverGradient(game.title) }}
+            >
+              {initials}
+            </div>
+          )}
+        </div>
+
+        <div className="details-title-block fade-up" style={{ animationDelay: "100ms" }}>
+          <h1 className="details-title">{game.title}</h1>
+          <div className="details-sub">
             {game.developer ?? "Unknown developer"} ·{" "}
             {game.release_year ?? "—"}
           </div>
         </div>
-        <div className="row">
+
+        <div className="details-actions fade-up" style={{ animationDelay: "140ms" }}>
           <button
-            className="btn btn-primary"
+            className="btn btn-primary btn-lg"
             onClick={launch}
             disabled={launching || !canLaunch(game.installations)}
-            title={canLaunch(game.installations) ? "Launch game" : "No launchable installation found"}
+            title={
+              canLaunch(game.installations)
+                ? "Launch game"
+                : "No launchable installation found"
+            }
           >
-            {launching ? "Launching…" : "▶ Play"}
+            <Icon name="play" size={15} />
+            {launching ? "Launching…" : "Play"}
           </button>
-          <button className="btn" onClick={fav}>
-            {game.is_favorite ? "★ Favorited" : "☆ Favorite"}
+          <button
+            className={clsx("btn icon-btn", game.is_favorite && "fav-on")}
+            onClick={fav}
+            title={game.is_favorite ? "Remove from favorites" : "Add to favorites"}
+          >
+            <Icon name="star" size={16} />
           </button>
           <Link to={`/library/${id}/achievements`} className="btn">
+            <Icon name="trophy" size={15} />
             Achievements
           </Link>
           <Link to={`/library/${id}/saves`} className="btn">
+            <Icon name="save" size={15} />
             Saves
           </Link>
           <Link to={`/library/${id}/mods`} className="btn">
+            <Icon name="package" size={15} />
             Mods
           </Link>
         </div>
       </div>
 
       <div className="stat-grid">
-        <Stat
+        <StatCard
+          icon="clock"
           label="Playtime"
           value={formatPlaytime(game.total_playtime_seconds)}
+          tone="cyan"
+          index={0}
         />
-        <Stat label="Completion" value={`${Math.round(game.completion_pct)}%`} />
-        <Stat
+        <StatCard
+          icon="target"
+          label="Completion"
+          value={`${Math.round(game.completion_pct)}%`}
+          tone="violet"
+          index={1}
+        />
+        <StatCard
+          icon="calendar"
           label="Last played"
           value={formatRelative(game.last_played_at)}
+          tone="gold"
+          index={2}
         />
-        <Stat label="Status" value={game.completion_state} />
+        <StatCard
+          icon="zap"
+          label="Status"
+          value={
+            game.completion_state.charAt(0).toUpperCase() +
+            game.completion_state.slice(1)
+          }
+          tone="green"
+          index={3}
+        />
       </div>
 
       <div className="section-header">
-        <h2>State</h2>
+        <h2>
+          <Icon name="target" size={15} />
+          State
+        </h2>
       </div>
-      <div className="row wrap" style={{ marginBottom: 24 }}>
+      <div className="seg-tabs" style={{ marginBottom: 28 }}>
         {STATES.map((s) => (
           <button
             key={s}
-            className={`btn ${
-              game.completion_state === s ? "btn-primary" : ""
-            }`}
+            className={clsx("seg-tab cap", game.completion_state === s && "active")}
             onClick={() => setState(s)}
           >
             {s}
@@ -164,11 +235,13 @@ export function GameDetails() {
         ))}
       </div>
 
-      {/* Artwork */}
       <div className="section-header">
-        <h2>Artwork</h2>
+        <h2>
+          <Icon name="image" size={15} />
+          Artwork
+        </h2>
       </div>
-      <div className="artwork-row" style={{ marginBottom: 24 }}>
+      <div className="artwork-row" style={{ marginBottom: 28 }}>
         <div className="artwork-slot">
           <div className="artwork-preview artwork-cover">
             {cover ? (
@@ -177,8 +250,9 @@ export function GameDetails() {
               <span className="muted small">No cover</span>
             )}
           </div>
-          <button className="btn btn-ghost small" onClick={pickCover}>
-            {cover ? "Change cover…" : "Set cover…"}
+          <button className="btn btn-sm" onClick={pickCover}>
+            <Icon name="image" size={13} />
+            {cover ? "Change cover" : "Set cover"}
           </button>
         </div>
         <div className="artwork-slot">
@@ -189,17 +263,21 @@ export function GameDetails() {
               <span className="muted small">No hero / banner</span>
             )}
           </div>
-          <button className="btn btn-ghost small" onClick={pickHero}>
-            {hero ? "Change hero…" : "Set hero…"}
+          <button className="btn btn-sm" onClick={pickHero}>
+            <Icon name="image" size={13} />
+            {hero ? "Change hero" : "Set hero"}
           </button>
         </div>
       </div>
 
       <div className="section-header">
-        <h2>Installations</h2>
+        <h2>
+          <Icon name="hard-drive" size={15} />
+          Installations
+        </h2>
         <span className="sub">{game.installations.length} found</span>
       </div>
-      <div className="list" style={{ marginBottom: 24 }}>
+      <div className="list" style={{ marginBottom: 28 }}>
         {game.installations.map((i) => (
           <div
             key={i.id}
@@ -207,24 +285,27 @@ export function GameDetails() {
             style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}
           >
             <div className="row spread">
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, flex: 1 }}>
+              <div className="mono" style={{ flex: 1 }}>
                 {i.install_dir}
               </div>
-              <div className="muted small">{formatBytes(i.install_size_bytes ?? 0)}</div>
+              <span className="chip">{formatBytes(i.install_size_bytes ?? 0)}</span>
             </div>
             <div className="row spread">
-              <div className="muted small" style={{ fontFamily: "var(--font-mono)", flex: 1 }}>
-                {i.executable
-                  ? `${i.executable}${i.executable_override ? " (manual)" : ""}`
-                  : "no executable detected"}
+              <div className="mono muted" style={{ flex: 1 }}>
+                {i.executable ?? "no executable detected"}
+                {i.executable && i.executable_override ? (
+                  <span className="save-badge manual" style={{ marginLeft: 8 }}>
+                    Manual
+                  </span>
+                ) : null}
               </div>
               <button
-                className="btn btn-ghost small"
-                style={{ fontSize: 11, padding: "4px 10px" }}
+                className="btn btn-ghost btn-sm"
                 onClick={() => browseExe(i.id)}
                 title="Choose a different executable for this installation"
               >
-                Browse…
+                <Icon name="folder" size={13} />
+                Browse
               </button>
             </div>
           </div>
@@ -232,12 +313,12 @@ export function GameDetails() {
       </div>
 
       <div className="section-header">
-        <h2>Notes</h2>
-        <button
-          className="btn"
-          onClick={saveNotes}
-          disabled={savingNotes}
-        >
+        <h2>
+          <Icon name="file-text" size={15} />
+          Notes
+        </h2>
+        <button className="btn btn-sm" onClick={saveNotes} disabled={savingNotes}>
+          <Icon name="check" size={13} />
           {savingNotes ? "Saving…" : "Save"}
         </button>
       </div>
@@ -249,17 +330,6 @@ export function GameDetails() {
         placeholder="Where am I in the story? Build I'm using? Side-quests left…"
       />
     </>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="stat-card">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value" style={{ fontSize: 18 }}>
-        {value}
-      </div>
-    </div>
   );
 }
 

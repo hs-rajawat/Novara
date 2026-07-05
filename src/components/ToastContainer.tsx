@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { onEvent } from "@/lib/ipc";
 import type { AppEvent } from "@/types";
+import { Icon, type IconName } from "@/components/Icon";
+
+type Level = "info" | "success" | "warning" | "error";
 
 interface Toast {
   id: number;
   message: string;
-  level: "info" | "success" | "warning" | "error";
+  level: Level;
 }
+
+const LEVEL_ICON: Record<Level, IconName> = {
+  info: "info",
+  success: "check-circle",
+  warning: "alert-triangle",
+  error: "alert-circle",
+};
 
 let _nextId = 0;
 
@@ -39,7 +49,7 @@ function toastFromEvent(ev: AppEvent): Toast | null {
   }
 }
 
-const DURATION_MS = 4000;
+const DURATION_MS = 4500;
 const MAX_VISIBLE = 5;
 
 export function ToastContainer() {
@@ -69,13 +79,22 @@ export function ToastContainer() {
   return (
     <div className="toast-container" role="log" aria-live="polite">
       {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={`toast toast-${t.level}`}
-          onClick={() => dismiss(t.id)}
-          role="status"
-        >
-          {t.message}
+        <div key={t.id} className={`toast toast-${t.level}`} role="status">
+          <span className="toast-icon">
+            <Icon name={LEVEL_ICON[t.level]} size={16} />
+          </span>
+          <span className="toast-msg">{t.message}</span>
+          <button
+            className="toast-close"
+            onClick={() => dismiss(t.id)}
+            aria-label="Dismiss notification"
+          >
+            <Icon name="x" size={14} />
+          </button>
+          <span
+            className="toast-progress"
+            style={{ animationDuration: `${DURATION_MS}ms` }}
+          />
         </div>
       ))}
     </div>
