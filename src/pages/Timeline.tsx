@@ -1,29 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { api } from "@/lib/ipc";
 import type { Game, PlaySession } from "@/types";
-import { formatPlaytime } from "@/lib/format";
+import { formatPlaytime, formatSessionDay, formatSessionTime } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { EmptyState } from "@/components/EmptyState";
-
-function dayLabel(isoDay: string): string {
-  try {
-    const d = parseISO(isoDay);
-    if (isToday(d)) return "Today";
-    if (isYesterday(d)) return "Yesterday";
-    return format(d, "EEEE, MMM d");
-  } catch {
-    return isoDay;
-  }
-}
-
-function timeOf(iso: string): string {
-  try {
-    return format(parseISO(iso), "p");
-  } catch {
-    return "";
-  }
-}
 
 export function Timeline() {
   const [sessions, setSessions] = useState<PlaySession[]>([]);
@@ -70,7 +50,7 @@ export function Timeline() {
             className="timeline-group fade-up"
             style={{ animationDelay: `${Math.min(gi, 8) * 50}ms` }}
           >
-            <div className="timeline-day">{dayLabel(day)}</div>
+            <div className="timeline-day">{formatSessionDay(day)}</div>
             <div className="list">
               {daySessions.map((s) => (
                 <div key={s.id} className="list-row">
@@ -82,7 +62,7 @@ export function Timeline() {
                       {games.get(s.game_id)?.title ?? "Unknown game"}
                     </div>
                     <div className="muted small">
-                      {timeOf(s.started_at)}
+                      {formatSessionTime(s.started_at)}
                       {s.idle_seconds > 0
                         ? ` · idle ${formatPlaytime(s.idle_seconds)}`
                         : ""}

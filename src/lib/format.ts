@@ -1,4 +1,4 @@
-import { formatDistanceToNowStrict, parseISO } from "date-fns";
+import { format, formatDistanceToNowStrict, isToday, isYesterday, parseISO } from "date-fns";
 
 export function formatPlaytime(seconds: number): string {
   if (!seconds || seconds <= 0) return "0h";
@@ -26,5 +26,26 @@ export function formatRelative(iso: string | null | undefined): string {
     return formatDistanceToNowStrict(parseISO(iso), { addSuffix: true });
   } catch {
     return iso;
+  }
+}
+
+/** "Today" / "Yesterday" / "Thursday, Mar 5" — used by session lists. */
+export function formatSessionDay(iso: string): string {
+  try {
+    const d = parseISO(iso);
+    if (isToday(d)) return "Today";
+    if (isYesterday(d)) return "Yesterday";
+    return format(d, "EEEE, MMM d");
+  } catch {
+    return iso;
+  }
+}
+
+/** "3:45 PM" — used alongside formatSessionDay. */
+export function formatSessionTime(iso: string): string {
+  try {
+    return format(parseISO(iso), "p");
+  } catch {
+    return "";
   }
 }

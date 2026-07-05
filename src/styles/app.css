@@ -1321,7 +1321,7 @@ a.list-row {
 
 .details-hero {
   position: relative;
-  height: clamp(240px, 34vw, 460px);
+  height: clamp(280px, 38vw, 480px);
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--border-soft);
@@ -1372,38 +1372,40 @@ a.list-row {
   z-index: 1;
   display: flex;
   align-items: flex-end;
-  gap: 24px;
+  gap: 26px;
   flex-wrap: wrap;
-  margin: -76px 24px 30px;
+  margin: -112px 24px 30px;
 }
 
 .details-cover {
-  width: 152px;
-  flex: 0 0 152px;
+  width: 180px;
+  flex: 0 0 180px;
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border-strong);
   background: var(--bg-2);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.6);
 }
 
 .details-title-block {
   flex: 1;
   min-width: 240px;
-  padding-bottom: 4px;
+  padding-bottom: 6px;
 }
 
 .details-title {
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.6px;
-  margin: 0 0 3px;
+  margin: 0 0 12px;
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
 }
 
-.details-sub {
-  font-size: 13px;
-  color: var(--text-secondary);
+.details-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .details-actions {

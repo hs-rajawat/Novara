@@ -2,12 +2,21 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
-import { api } from "@/lib/ipc";
-import type { CompletionState, GameWithInstalls, Installation } from "@/types";
-import { formatBytes, formatPlaytime, formatRelative } from "@/lib/format";
+import { api, onEvent } from "@/lib/ipc";
+import type { CompletionState, GameWithInstalls, Installation, PlaySession } from "@/types";
+import {
+  formatBytes,
+  formatPlaytime,
+  formatRelative,
+  formatSessionDay,
+  formatSessionTime,
+} from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { StatCard } from "@/components/StatCard";
 import { GameArtwork } from "@/components/GameArtwork";
+import { PlatformBadge } from "@/components/PlatformBadge";
+
+const RECENT_SESSIONS_LIMIT = 8;
 
 const STATES: CompletionState[] = [
   "unplayed",
@@ -27,12 +36,33 @@ export function GameDetails() {
   const [notes, setNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [sessions, setSessions] = useState<PlaySession[]>([]);
 
   useEffect(() => {
     api.getGame(id).then((g) => {
       setGame(g);
       setNotes(g?.user_notes ?? "");
     });
+  }, [id]);
+
+  useEffect(() => {
+    api.listSessions(id, RECENT_SESSIONS_LIMIT).then(setSessions);
+  }, [id]);
+
+  // A session that ends while this page is open should show up without a
+  // manual refresh.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    onEvent((ev) => {
+      if (ev.type === "session_ended" && ev.game_id === id) {
+        api.listSessions(id, RECENT_SESSIONS_LIMIT).then(setSessions);
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
   }, [id]);
 
   if (!game) {
@@ -128,9 +158,12 @@ export function GameDetails() {
 
         <div className="details-title-block fade-up" style={{ animationDelay: "100ms" }}>
           <h1 className="details-title">{game.title}</h1>
-          <div className="details-sub">
-            {game.developer ?? "Unknown developer"} ·{" "}
-            {game.release_year ?? "—"}
+          <div className="details-meta-row">
+            {game.developer && <span className="chip">{game.developer}</span>}
+            {game.release_year && <span className="chip">{game.release_year}</span>}
+            <PlatformBadge code={game.primary_source_code} label={game.primary_source_label} />
+            <span className="chip cap">{game.completion_state}</span>
+            <span className="chip">{formatPlaytime(game.total_playtime_seconds)}</span>
           </div>
         </div>
 
@@ -203,6 +236,43 @@ export function GameDetails() {
           index={3}
         />
       </div>
+
+      <div className="section-header">
+        <h2>
+          <Icon name="history" size={15} />
+          Recent sessions
+        </h2>
+        <Link to="/timeline" className="sub back-link">
+          Full timeline
+          <Icon name="chevron-right" size={13} />
+        </Link>
+      </div>
+      {sessions.length === 0 ? (
+        <div className="empty" style={{ padding: "36px 20px", marginBottom: 28 }}>
+          <p>No sessions recorded yet — play this game to start tracking.</p>
+        </div>
+      ) : (
+        <div className="list" style={{ marginBottom: 28 }}>
+          {sessions.map((s) => (
+            <div key={s.id} className="list-row">
+              <div className="session-icon">
+                <Icon name="zap" size={15} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600 }}>{formatSessionDay(s.started_at)}</div>
+                <div className="muted small">
+                  {formatSessionTime(s.started_at)}
+                  {s.idle_seconds > 0 ? ` · idle ${formatPlaytime(s.idle_seconds)}` : ""}
+                </div>
+              </div>
+              <span className="chip">
+                <Icon name="clock" size={11} />
+                {formatPlaytime(s.duration_seconds)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="section-header">
         <h2>
