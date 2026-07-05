@@ -1,4 +1,5 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
+import { useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Icon, type IconName } from "@/components/Icon";
 
@@ -14,8 +15,19 @@ const SETTINGS_NAV: { to: string; label: string; icon: IconName }[] = [
 ];
 
 export function Sidebar() {
+  const loc = useLocation();
+  const railRef = useRef<HTMLElement>(null);
+  const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(null);
+
+  // Measure the active .nav-item after each navigation rather than
+  // re-deriving react-router's own active-matching rules here.
+  useLayoutEffect(() => {
+    const active = railRef.current?.querySelector<HTMLElement>(".nav-item.active");
+    setIndicator(active ? { top: active.offsetTop, height: active.offsetHeight } : null);
+  }, [loc.pathname]);
+
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" ref={railRef}>
       <div className="sidebar-brand">
         <span className="logo">
           <Icon name="gamepad" size={18} />
@@ -25,6 +37,13 @@ export function Sidebar() {
         </span>
       </div>
 
+      {indicator && (
+        <div
+          className="nav-indicator"
+          style={{ transform: `translateY(${indicator.top}px)`, height: indicator.height }}
+        />
+      )}
+
       <div className="nav-section-label">Main</div>
       {NAV.map((n) => (
         <NavLink
@@ -32,7 +51,7 @@ export function Sidebar() {
           to={n.to}
           className={({ isActive }) => clsx("nav-item", isActive && "active")}
         >
-          <Icon name={n.icon} size={17} />
+          <Icon name={n.icon} size={16} />
           {n.label}
         </NavLink>
       ))}
@@ -44,7 +63,7 @@ export function Sidebar() {
           to={n.to}
           className={({ isActive }) => clsx("nav-item", isActive && "active")}
         >
-          <Icon name={n.icon} size={17} />
+          <Icon name={n.icon} size={16} />
           {n.label}
         </NavLink>
       ))}

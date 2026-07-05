@@ -11,22 +11,23 @@
 /* ═══════════ Sidebar ═══════════ */
 
 .sidebar {
+  position: relative;
   background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
   border-right: 1px solid var(--border-soft);
   display: flex;
   flex-direction: column;
-  padding: 18px 12px 14px;
-  gap: 2px;
+  padding: 16px 10px 12px;
+  gap: 1px;
 }
 
 .sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 4px 10px 20px;
+  gap: 10px;
+  padding: 4px 9px 18px;
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 16px;
+  font-size: 15.5px;
   letter-spacing: -0.2px;
 }
 
@@ -54,15 +55,16 @@
   font-weight: 600;
   letter-spacing: 1.2px;
   color: var(--text-tertiary);
-  padding: 16px 12px 7px;
+  padding: 14px 11px 6px;
 }
 
 .nav-item {
   position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 9px 12px;
+  gap: 10px;
+  padding: 8px 11px;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-weight: 500;
@@ -87,9 +89,7 @@
 }
 
 .nav-item.active {
-  background: var(--accent-soft);
   color: var(--text-primary);
-  box-shadow: var(--inner-light);
 }
 
 .nav-item.active svg {
@@ -97,17 +97,20 @@
   opacity: 1;
 }
 
-.nav-item.active::before {
-  content: "";
+/* Single shared pill that glides between nav items (see Sidebar.tsx) —
+   replaces a per-item background so the active state transitions instead
+   of jumping. */
+.nav-indicator {
   position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--gradient-accent);
-  box-shadow: 0 0 10px rgba(124, 92, 255, 0.65);
+  z-index: 0;
+  left: 10px;
+  right: 10px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  box-shadow: var(--inner-light);
+  transition: transform var(--dur-med) var(--ease-spring),
+              height var(--dur-fast) var(--ease-out);
+  pointer-events: none;
 }
 
 .sidebar-footer {
@@ -143,12 +146,12 @@
 .topbar {
   height: var(--topbar-h);
   border-bottom: 1px solid var(--border-soft);
-  padding: 0 24px;
+  padding: 0 26px;
   display: flex;
   align-items: center;
   gap: 16px;
   background: var(--bg-glass);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(var(--glass-blur));
   z-index: 5;
 }
 
