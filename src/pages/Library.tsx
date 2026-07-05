@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { useLibrary, selectVisibleGames, type SortMode } from "@/stores/library";
 import { GameCard } from "@/components/GameCard";
 import { EmptyState } from "@/components/EmptyState";
+import { EmptyLibrary } from "@/components/EmptyLibrary";
 
 type Filter = "all" | "favorites" | "playing" | "backlog" | "completed";
 
@@ -41,6 +42,10 @@ export function Library() {
     }),
     [allGames]
   );
+
+  if (!loading && allGames.length === 0) {
+    return <EmptyLibrary />;
+  }
 
   return (
     <>
