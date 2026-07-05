@@ -3,12 +3,11 @@ import { Link, useParams } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
 import { api } from "@/lib/ipc";
-import { toImgSrc } from "@/lib/image";
-import { coverGradient } from "@/lib/color";
 import type { CompletionState, GameWithInstalls, Installation } from "@/types";
 import { formatBytes, formatPlaytime, formatRelative } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { StatCard } from "@/components/StatCard";
+import { GameArtwork } from "@/components/GameArtwork";
 
 const STATES: CompletionState[] = [
   "unplayed",
@@ -98,15 +97,6 @@ export function GameDetails() {
     setGame((prev) => (prev ? { ...prev, hero_path: stored } : prev));
   }
 
-  const hero = toImgSrc(game.hero_path);
-  const cover = toImgSrc(game.cover_path);
-  const initials = game.title
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((s) => s[0])
-    .join("")
-    .toUpperCase();
-
   return (
     <>
       {/* Hero banner with floating cover */}
@@ -115,28 +105,25 @@ export function GameDetails() {
           <Icon name="arrow-left" size={14} />
           Library
         </Link>
-        {hero ? (
-          <img src={hero} alt={`${game.title} banner`} />
-        ) : (
-          <div
-            className="details-hero-fallback"
-            style={{ background: coverGradient(game.title) }}
-          />
-        )}
+        <GameArtwork
+          src={game.hero_path}
+          title={game.title}
+          kind="hero"
+          className="artwork-fill"
+          alt={`${game.title} banner`}
+          eager
+        />
       </div>
 
       <div className="details-head">
         <div className="details-cover fade-up" style={{ animationDelay: "60ms" }}>
-          {cover ? (
-            <img src={cover} alt={`${game.title} cover`} />
-          ) : (
-            <div
-              className="cover-fallback"
-              style={{ background: coverGradient(game.title) }}
-            >
-              {initials}
-            </div>
-          )}
+          <GameArtwork
+            src={game.cover_path}
+            title={game.title}
+            kind="cover"
+            alt={`${game.title} cover`}
+            eager
+          />
         </div>
 
         <div className="details-title-block fade-up" style={{ animationDelay: "100ms" }}>
@@ -243,29 +230,33 @@ export function GameDetails() {
       </div>
       <div className="artwork-row" style={{ marginBottom: 28 }}>
         <div className="artwork-slot">
-          <div className="artwork-preview artwork-cover">
-            {cover ? (
-              <img src={cover} alt="Cover" />
-            ) : (
-              <span className="muted small">No cover</span>
-            )}
+          <div className="artwork-preview artwork-preview-cover">
+            <GameArtwork
+              src={game.cover_path}
+              title={game.title}
+              kind="cover"
+              className="artwork-fill"
+              alt="Cover"
+            />
           </div>
           <button className="btn btn-sm" onClick={pickCover}>
             <Icon name="image" size={13} />
-            {cover ? "Change cover" : "Set cover"}
+            {game.cover_path ? "Change cover" : "Set cover"}
           </button>
         </div>
         <div className="artwork-slot">
-          <div className="artwork-preview artwork-hero-thumb">
-            {hero ? (
-              <img src={hero} alt="Hero" />
-            ) : (
-              <span className="muted small">No hero / banner</span>
-            )}
+          <div className="artwork-preview artwork-preview-hero">
+            <GameArtwork
+              src={game.hero_path}
+              title={game.title}
+              kind="hero"
+              className="artwork-fill"
+              alt="Hero"
+            />
           </div>
           <button className="btn btn-sm" onClick={pickHero}>
             <Icon name="image" size={13} />
-            {hero ? "Change hero" : "Set hero"}
+            {game.hero_path ? "Change hero" : "Set hero"}
           </button>
         </div>
       </div>

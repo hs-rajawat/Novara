@@ -527,6 +527,64 @@ a.list-row {
   text-overflow: ellipsis;
 }
 
+/* ═══════════ Artwork (GameArtwork component) ═══════════ */
+
+.artwork {
+  position: relative;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+
+.artwork-cover {
+  aspect-ratio: var(--cover-ratio);
+}
+
+.artwork-hero {
+  aspect-ratio: var(--hero-ratio);
+}
+
+.artwork-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  filter: blur(16px) saturate(1.05);
+  transform: scale(1.04);
+  transition: opacity 0.5s var(--ease-out), filter 0.5s var(--ease-out),
+              transform 0.5s var(--ease-out);
+}
+
+.artwork-hero .artwork-img {
+  object-position: center 30%;
+}
+
+.artwork-img.is-loaded {
+  opacity: 1;
+  filter: blur(0) saturate(1);
+  transform: scale(1);
+}
+
+.artwork-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.55);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  transition: opacity 0.35s var(--ease-out);
+}
+
+.artwork-placeholder.is-hidden {
+  opacity: 0;
+}
+
 /* ═══════════ Game grid & cards ═══════════ */
 
 .game-grid {
@@ -556,20 +614,12 @@ a.list-row {
 }
 
 .game-cover {
-  aspect-ratio: 3 / 4;
   position: relative;
   overflow: hidden;
   background: var(--bg-2);
 }
 
-.game-cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.45s var(--ease-out);
-}
-
-.game-card:hover .game-cover img {
+.game-card:hover .artwork-img.is-loaded {
   transform: scale(1.06);
 }
 
@@ -937,18 +987,18 @@ a.list-row {
 
 .details-hero {
   position: relative;
-  height: 250px;
+  height: clamp(240px, 34vw, 460px);
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--border-soft);
 }
 
-.details-hero img,
-.details-hero-fallback {
+/* Lets a GameArtwork fill a parent-defined box (clamp()'d height above)
+   instead of computing its own height from --hero-ratio/--cover-ratio. */
+.artwork-fill {
+  aspect-ratio: auto;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center 28%;
 }
 
 .details-hero::after {
@@ -996,19 +1046,11 @@ a.list-row {
 .details-cover {
   width: 152px;
   flex: 0 0 152px;
-  aspect-ratio: 3 / 4;
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border-strong);
   background: var(--bg-2);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
-}
-
-.details-cover img,
-.details-cover .cover-fallback {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .details-title-block {
@@ -1066,20 +1108,14 @@ a.list-row {
   border-color: var(--accent);
 }
 
-.artwork-cover {
+.artwork-preview-cover {
   width: 116px;
   height: 155px;
 }
 
-.artwork-hero-thumb {
+.artwork-preview-hero {
   width: 280px;
   height: 118px;
-}
-
-.artwork-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 /* ═══════════ Recently played (Dashboard) ═══════════ */

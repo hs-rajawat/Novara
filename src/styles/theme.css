@@ -51,12 +51,22 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  --radius-xl: 22px;
   --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset,
               0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45),
                 0 0 0 1px rgba(124, 92, 255, 0.14),
                 0 0 28px rgba(124, 92, 255, 0.1);
   --inner-light: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+  /* ── artwork ratios: every cover/hero surface shares these ──── */
+  --cover-ratio: 2 / 3;
+  --hero-ratio: 21 / 9;
+
+  /* ── glass / hero ambience ────────────────────────────────────── */
+  --glass-blur: 18px;
+  --hero-scrim: linear-gradient(180deg, rgba(7, 10, 18, 0.15) 0%,
+                rgba(7, 10, 18, 0.55) 55%, rgba(7, 10, 18, 0.97) 100%);
 
   /* ── motion ────────────────────────────────────────────────── */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);

@@ -1,8 +1,7 @@
 import { Link } from "react-router-dom";
 import type { Game } from "@/types";
 import { formatPlaytime, formatRelative } from "@/lib/format";
-import { toImgSrc } from "@/lib/image";
-import { coverGradient } from "@/lib/color";
+import { GameArtwork } from "@/components/GameArtwork";
 import { Icon } from "@/components/Icon";
 
 interface Props {
@@ -12,15 +11,6 @@ interface Props {
 }
 
 export function GameCard({ game, index = 0 }: Props) {
-  const initials = game.title
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((s) => s[0])
-    .join("")
-    .toUpperCase();
-
-  const cover = toImgSrc(game.cover_path);
-
   return (
     <Link
       to={`/library/${game.id}`}
@@ -28,16 +18,7 @@ export function GameCard({ game, index = 0 }: Props) {
       style={{ animationDelay: `${Math.min(index, 16) * 35}ms` }}
     >
       <div className="game-cover">
-        {cover ? (
-          <img src={cover} alt={game.title} loading="lazy" />
-        ) : (
-          <div
-            className="cover-fallback"
-            style={{ background: coverGradient(game.title) }}
-          >
-            {initials}
-          </div>
-        )}
+        <GameArtwork src={game.cover_path} title={game.title} kind="cover" />
         {game.is_favorite ? (
           <span className="fav-pin">
             <Icon name="star" size={13} />
