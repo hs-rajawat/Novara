@@ -17,13 +17,15 @@ const SETTINGS_NAV: { to: string; label: string; icon: IconName }[] = [
 export function Sidebar() {
   const loc = useLocation();
   const railRef = useRef<HTMLElement>(null);
-  const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(null);
+  const [indicatorTop, setIndicatorTop] = useState<number | null>(null);
 
   // Measure the active .nav-item after each navigation rather than
-  // re-deriving react-router's own active-matching rules here.
+  // re-deriving react-router's own active-matching rules here. Height isn't
+  // measured — every .nav-item shares --nav-item-h, so the indicator's CSS
+  // height already matches exactly.
   useLayoutEffect(() => {
     const active = railRef.current?.querySelector<HTMLElement>(".nav-item.active");
-    setIndicator(active ? { top: active.offsetTop, height: active.offsetHeight } : null);
+    setIndicatorTop(active ? active.offsetTop : null);
   }, [loc.pathname]);
 
   return (
@@ -37,11 +39,8 @@ export function Sidebar() {
         </span>
       </div>
 
-      {indicator && (
-        <div
-          className="nav-indicator"
-          style={{ transform: `translateY(${indicator.top}px)`, height: indicator.height }}
-        />
+      {indicatorTop !== null && (
+        <div className="nav-indicator" style={{ top: indicatorTop }} />
       )}
 
       <div className="nav-section-label">Main</div>

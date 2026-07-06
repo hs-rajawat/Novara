@@ -24,6 +24,10 @@
   flex-direction: column;
   padding: 16px 10px 12px;
   gap: 1px;
+  /* Every nav item and the sliding indicator both read their height from
+     this single token, so they're geometrically identical by construction
+     instead of by coincidence. */
+  --nav-item-h: 40px;
 }
 
 .sidebar-brand {
@@ -67,10 +71,13 @@
 .nav-item {
   position: relative;
   z-index: 1;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 11px;
+  height: var(--nav-item-h);
+  padding: 0 11px;
+  white-space: nowrap;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-weight: 500;
@@ -105,17 +112,24 @@
 
 /* Single shared pill that glides between nav items (see Sidebar.tsx) —
    replaces a per-item background so the active state transitions instead
-   of jumping. */
+   of jumping. Positioned with `top` (a real layout property, in the same
+   coordinate space as the .nav-item offsetTop values that drive it) rather
+   than `transform: translateY()`, so there's no separate
+   compositor-vs-layout rounding path to drift out of sync at fractional
+   Windows display scaling (125%, 150%). Height comes from --nav-item-h
+   directly instead of a measured value, so it's always exactly the height
+   of a real nav item, never a pixel off from one.  */
 .nav-indicator {
   position: absolute;
   z-index: 0;
+  top: 0;
   left: 10px;
   right: 10px;
+  height: var(--nav-item-h);
   border-radius: var(--radius-md);
   background: var(--accent-soft);
   box-shadow: var(--inner-light);
-  transition: transform var(--dur-med) var(--ease-spring),
-              height var(--dur-fast) var(--ease-out);
+  transition: top var(--dur-med) var(--ease-spring);
   pointer-events: none;
 }
 
