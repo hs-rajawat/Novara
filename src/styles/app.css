@@ -12,6 +12,12 @@
 
 .sidebar {
   position: relative;
+  /* Grid items default to min-height:auto (sized to content), which lets
+     them grow past the 100vh row and get silently clipped by body's
+     overflow:hidden instead of the intended area scrolling. Pinning this
+     to the grid row keeps the rail fixed regardless of nav-item count. */
+  min-height: 0;
+  overflow-y: auto;
   background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
   border-right: 1px solid var(--border-soft);
   display: flex;
@@ -137,6 +143,9 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* Same fix as .sidebar: without this, .content's flex:1 can't compute a
+     bounded height, so its own overflow-y:auto never actually kicks in. */
+  min-height: 0;
   background:
     radial-gradient(1100px 540px at 12% -12%, rgba(124, 92, 255, 0.1), transparent 62%),
     radial-gradient(900px 500px at 95% -18%, rgba(56, 189, 248, 0.07), transparent 60%),
@@ -144,6 +153,9 @@
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  flex: 0 0 auto;
   height: var(--topbar-h);
   border-bottom: 1px solid var(--border-soft);
   padding: 0 26px;
@@ -204,8 +216,13 @@
 
 .content {
   flex: 1;
+  /* The actual fix: flex items also default to min-height:auto, so
+     without this, "flex: 1" can never shrink below the page's natural
+     content height and overflow-y:auto below has nothing to do. */
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
   padding: 28px 32px 80px;
   animation: page-enter var(--dur-med) var(--ease-out);
 }
