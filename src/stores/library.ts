@@ -25,10 +25,13 @@ interface LibraryState {
   query: string;
   filter: "all" | "favorites" | "playing" | "completed" | "backlog";
   sort: SortMode;
+  /** Whether games removed from the library (`is_hidden`) are included. */
+  includeHidden: boolean;
   load: () => Promise<void>;
   setQuery: (q: string) => void;
   setFilter: (f: LibraryState["filter"]) => void;
   setSort: (s: SortMode) => void;
+  setIncludeHidden: (v: boolean) => void;
   toggleFavorite: (id: string) => Promise<void>;
 }
 
@@ -39,10 +42,11 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   query: "",
   filter: "all",
   sort: loadSort(),
+  includeHidden: false,
   load: async () => {
     set({ loading: true, error: null });
     try {
-      const games = await api.listGames(false);
+      const games = await api.listGames(get().includeHidden);
       set({ games, loading: false });
     } catch (err) {
       set({ error: String(err), loading: false });
@@ -53,6 +57,10 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   setSort: (sort) => {
     localStorage.setItem(SORT_KEY, sort);
     set({ sort });
+  },
+  setIncludeHidden: (includeHidden) => {
+    set({ includeHidden });
+    get().load();
   },
   toggleFavorite: async (id) => {
     const target = get().games.find((g) => g.id === id);
@@ -75,6 +83,14 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 export function selectVisibleGames(state: LibraryState): Game[] {
   const q = state.query.trim().toLowerCase();
   const filtered = state.games.filter((g) => {
+    // Steam games GameVault can no longer confirm as installed are hidden
+    // from the default Library view — their history stays intact and
+    // reachable directly, they just don't clutter the active grid. Manual/
+    // other-source Missing games stay visible (they need the Missing
+    // badge / Locate Executable / Remove from Library flow).
+    if (g.primary_source_code === "steam" && g.primary_install_status === "missing") {
+      return false;
+    }
     if (q && !g.title.toLowerCase().includes(q)) return false;
     switch (state.filter) {
       case "favorites":

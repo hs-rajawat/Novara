@@ -16,7 +16,9 @@ All items below are fully implemented, tested, and passing `cargo check` + `carg
 | Component | Location |
 |-----------|----------|
 | SQLite database + WAL mode + FK enforcement + connection pool | `src-tauri/src/db/mod.rs` |
-| Schema migrations (3 migrations) | `src-tauri/migrations/` |
+| Schema migrations (5 migrations) | `src-tauri/migrations/` |
+| Library Integrity System — source-aware install-status resolution (Steam manifest `StateFlags` + generic exe/dir check), reused `SteamContext` per sweep | `src-tauri/src/integrity/` |
+| Library Integrity System — startup + periodic (5 min) background verifier, post-scan reconciliation, launch-time recheck & missing-state launch guard | `src-tauri/src/integrity/service.rs`, `src-tauri/src/commands/games.rs` |
 | Steam library scanner — multi-library VDF + ACF parsing | `src-tauri/src/scanner/steam.rs` |
 | Manual folder scanner — depth-3 walk, exe ranking, size | `src-tauri/src/scanner/manual.rs` |
 | Scanner orchestrator — parallel execution, upsert dedup, scan audit log | `src-tauri/src/scanner/mod.rs` |
@@ -51,7 +53,7 @@ All items below are fully implemented, tested, and passing `cargo check` + `carg
 | Zustand library store — optimistic updates, search, filter, sort (5 modes, persisted) | `src/stores/library.ts` |
 | Dashboard — stats cards, 90-day chart, recently played with cover art, top genres; event refresh | `src/pages/Dashboard.tsx` |
 | Library — game grid, tab filters, 5 sort options (title/playtime/last played/added) | `src/pages/Library.tsx` |
-| Game details — hero banner, Artwork section (cover+hero pickers), state, installations, notes | `src/pages/GameDetails.tsx` |
+| Game details — hero banner, Artwork section (cover+hero pickers), state, installations, notes, Missing badge, Locate Executable, Remove/Restore from Library | `src/pages/GameDetails.tsx` |
 | Achievements — unlock toggle, create form, delete, unlock % | `src/pages/Achievements.tsx` |
 | Save manager — detection panel, Auto/Manual badges, delete, backup/restore | `src/pages/SaveManager.tsx` |
 | Analytics — 365-day SVG heatmap with color intensity | `src/pages/Analytics.tsx` |
@@ -105,6 +107,45 @@ cargo clippy  # → Finished with 0 warnings
 # TypeScript clean ✅
 npm run typecheck  # → no output (pass)
 ```
+
+---
+
+## Library Integrity System — Missing Game Detection ✅ COMPLETE (2026-07-15)
+
+**Goal:** Keep the library honest about what is actually installed — detect when a game has been uninstalled, moved, or deleted (via Steam or manually), surface it clearly, and offer non-destructive recovery, without ever blocking startup or the UI.
+
+### Features — ALL DELIVERED ✅
+
+- ✅ Steam uninstall detection via manifest-based verification (`appmanifest_<id>.acf` presence across all libraries).
+- ✅ Conservative Steam `StateFlags` handling — absent manifest is the only unconditional "missing"; only bit 1 (Uninstalling) is treated as not-installed; transitional states stay Installed.
+- ✅ Efficient `SteamContext` reuse — Steam library discovery happens once per sweep, not per game (cheap at 500–1000+ libraries).
+- ✅ Manual missing-executable detection via the generic install-dir/executable filesystem check.
+- ✅ Shared, source-aware installation status resolution (`resolve_installation_status`) — the single point Steam, manual, and future sources feed into.
+- ✅ Startup integrity verification (one-shot sweep, catches uninstalls that happened while GameVault was closed).
+- ✅ Periodic background integrity verification (~5 min recurring sweep).
+- ✅ Post-scan best-effort reconciliation.
+- ✅ Launch-time installation recheck + missing-state launch guard (blocks Play on a stale row deterministically).
+- ✅ Missing status surfaced to the frontend (`primary_install_status`, `Installation.status`).
+- ✅ Missing badge and status-aware Play behavior in the Library grid and Game Details.
+- ✅ "Locate Executable" recovery flow — repoint a Missing installation and restore it to Installed.
+- ✅ Non-destructive "Remove from Library" / "Restore to Library" reusing the existing `is_hidden` state — no row deleted, all history preserved.
+- ✅ "Show hidden" toggle in the Library view.
+- ✅ Historical data preservation (playtime, sessions, achievements, saves, mods, artwork) across every state change.
+- ✅ `GameUpdated` event propagation with live UI refresh.
+- ✅ Tauri runtime panic fix — background sweeps spawned via `tauri::async_runtime::spawn` (the sync `setup` closure has no ambient Tokio runtime, matching the `start_event_forwarder` pattern).
+
+### Schema Changes
+
+- `0004_install_status.sql` — `game_installations.status TEXT NOT NULL DEFAULT 'installed'`.
+- `0005_install_verified_at.sql` — `game_installations.last_verified_at TEXT` (nullable).
+
+### Validation — ALL MET ✅
+
+- ✅ `cargo check` — passed.
+- ✅ `cargo clippy -- -D warnings` — passed, zero warnings.
+- ✅ `npm run build` — passed.
+- ✅ `npm run tauri:dev` — app launched and ran without the prior runtime panic; startup sweep confirmed in logs.
+- ✅ Manual runtime testing — feature confirmed working.
 
 ---
 

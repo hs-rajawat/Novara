@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
 import { api, onEvent } from "@/lib/ipc";
@@ -32,6 +32,7 @@ const IMG_FILTERS = [
 
 export function GameDetails() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const [game, setGame] = useState<GameWithInstalls | null>(null);
   const [notes, setNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -49,13 +50,17 @@ export function GameDetails() {
     api.listSessions(id, RECENT_SESSIONS_LIMIT).then(setSessions);
   }, [id]);
 
-  // A session that ends while this page is open should show up without a
-  // manual refresh.
+  // A session that ends, or the Library Integrity System changing this
+  // game's status (periodic sweep, a launch-time recheck, Locate
+  // Executable), should show up without a manual refresh.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     onEvent((ev) => {
       if (ev.type === "session_ended" && ev.game_id === id) {
         api.listSessions(id, RECENT_SESSIONS_LIMIT).then(setSessions);
+      }
+      if (ev.type === "game_updated" && ev.game_id === id) {
+        api.getGame(id).then(setGame);
       }
     }).then((fn) => {
       unlisten = fn;
@@ -96,8 +101,29 @@ export function GameDetails() {
     setLaunching(true);
     try {
       await api.launchGame(id);
+    } catch {
+      // Surfaced to the user via the backend's Notice toast.
     } finally {
       setLaunching(false);
+    }
+  }
+
+  async function toggleHidden() {
+    if (!game) return;
+    const hidden = !game.is_hidden;
+    if (
+      hidden &&
+      !confirm(
+        `Remove "${game.title}" from your library? This keeps its playtime, sessions, and achievements — you can bring it back any time.`
+      )
+    ) {
+      return;
+    }
+    await api.setHidden(id, hidden);
+    if (hidden) {
+      navigate("/library");
+    } else {
+      setGame(await api.getGame(id));
     }
   }
 
@@ -162,6 +188,12 @@ export function GameDetails() {
             {game.developer && <span className="chip">{game.developer}</span>}
             {game.release_year && <span className="chip">{game.release_year}</span>}
             <PlatformBadge code={game.primary_source_code} label={game.primary_source_label} />
+            {game.primary_install_status === "missing" && (
+              <span className="chip chip-missing">
+                <Icon name="alert-triangle" size={11} />
+                Missing
+              </span>
+            )}
             <span className="chip cap">{game.completion_state}</span>
             <span className="chip">{formatPlaytime(game.total_playtime_seconds)}</span>
           </div>
@@ -175,7 +207,7 @@ export function GameDetails() {
             title={
               canLaunch(game.installations)
                 ? "Launch game"
-                : "No launchable installation found"
+                : "No launchable installation found — locate its executable below"
             }
           >
             <Icon name="play" size={15} />
@@ -200,6 +232,13 @@ export function GameDetails() {
             <Icon name="package" size={15} />
             Mods
           </Link>
+          <button
+            className="btn icon-btn"
+            onClick={toggleHidden}
+            title={game.is_hidden ? "Restore to library" : "Remove from library"}
+          >
+            <Icon name={game.is_hidden ? "rotate-ccw" : "trash"} size={16} />
+          </button>
         </div>
       </div>
 
@@ -349,7 +388,14 @@ export function GameDetails() {
               <div className="mono" style={{ flex: 1 }}>
                 {i.install_dir}
               </div>
-              <span className="chip">{formatBytes(i.install_size_bytes ?? 0)}</span>
+              {i.status === "missing" ? (
+                <span className="save-badge missing">
+                  <Icon name="alert-triangle" size={11} />
+                  Missing
+                </span>
+              ) : (
+                <span className="chip">{formatBytes(i.install_size_bytes ?? 0)}</span>
+              )}
             </div>
             <div className="row spread">
               <div className="mono muted" style={{ flex: 1 }}>
@@ -363,10 +409,14 @@ export function GameDetails() {
               <button
                 className="btn btn-ghost btn-sm"
                 onClick={() => browseExe(i.id)}
-                title="Choose a different executable for this installation"
+                title={
+                  i.status === "missing"
+                    ? "Point GameVault at this game's executable to restore it"
+                    : "Choose a different executable for this installation"
+                }
               >
                 <Icon name="folder" size={13} />
-                Browse
+                {i.status === "missing" ? "Locate Executable" : "Browse"}
               </button>
             </div>
           </div>
@@ -395,5 +445,5 @@ export function GameDetails() {
 }
 
 function canLaunch(installs: Installation[]): boolean {
-  return installs.some((i) => i.executable !== null || i.source_app_id !== null);
+  return installs.some((i) => i.status === "installed");
 }

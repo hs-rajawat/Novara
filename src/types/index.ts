@@ -31,6 +31,8 @@ export interface Game {
   updated_at: string;
   primary_source_code: string | null;
   primary_source_label: string | null;
+  /** Library Integrity status ("installed" | "missing") of the primary installation, if any. */
+  primary_install_status: string | null;
 }
 
 export type CompletionState =
@@ -53,6 +55,9 @@ export interface Installation {
   detected_at: string;
   /** 1 when the executable was manually chosen; scanner will not overwrite it. */
   executable_override: number;
+  /** Library Integrity System status: "installed" | "missing" | (future user-asserted states). */
+  status: string;
+  last_verified_at: string | null;
 }
 
 export interface GameWithInstalls extends Game {

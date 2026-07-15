@@ -29,8 +29,10 @@ export function Library() {
   const loading = useLibrary((s) => s.loading);
   const filter = useLibrary((s) => s.filter);
   const sort = useLibrary((s) => s.sort);
+  const includeHidden = useLibrary((s) => s.includeHidden);
   const setFilter = useLibrary((s) => s.setFilter);
   const setSort = useLibrary((s) => s.setSort);
+  const setIncludeHidden = useLibrary((s) => s.setIncludeHidden);
 
   const counts = useMemo<Record<Filter, number>>(
     () => ({
@@ -75,6 +77,15 @@ export function Library() {
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="sort-control">
+          <input
+            type="checkbox"
+            checked={includeHidden}
+            onChange={(e) => setIncludeHidden(e.target.checked)}
+          />
+          Show hidden
         </label>
       </div>
 

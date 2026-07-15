@@ -60,6 +60,7 @@ fn scan_root(root: &Path, out: &mut Vec<DetectedGame>) {
                 executable: Some(exe.strip_prefix(&path).unwrap_or(&exe).to_path_buf()),
                 source_app_id: None,
                 install_size_bytes: size,
+                install_state_hint: None,
             });
         }
     }

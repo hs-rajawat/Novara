@@ -12,6 +12,7 @@ use tracing::info;
 use crate::db::Db;
 use crate::error::AppResult;
 use crate::events::EventBus;
+use crate::integrity::IntegrityService;
 use crate::playtime::PlaytimeTracker;
 use crate::save_mgr::SaveManager;
 use crate::scanner::ScannerOrchestrator;
@@ -22,6 +23,7 @@ pub struct AppState {
     pub scanner: ScannerOrchestrator,
     pub saves: SaveManager,
     pub playtime: Arc<PlaytimeTracker>,
+    pub integrity: Arc<IntegrityService>,
     pub app_data_dir: PathBuf,
 }
 
@@ -34,10 +36,16 @@ impl AppState {
         let scanner = ScannerOrchestrator::new(db.clone(), bus.clone());
         let saves = SaveManager::new(db.clone(), bus.clone(), &app_data_dir)?;
         let playtime = Arc::new(PlaytimeTracker::new(db.clone(), bus.clone()));
+        let integrity = Arc::new(IntegrityService::new(db.clone(), bus.clone()));
 
         // Kick off passive process watcher with a generous poll interval —
         // 5s is enough resolution for playtime tracking and gentle on CPU.
         playtime.clone().spawn_watcher(Duration::from_secs(5));
+
+        // The integrity service's startup/periodic sweeps are intentionally
+        // NOT spawned here — they emit bus events, and doing so before
+        // `start_event_forwarder` has subscribed would silently drop them.
+        // lib.rs spawns them right after the forwarder subscribes instead.
 
         Ok(Self {
             db,
@@ -45,6 +53,7 @@ impl AppState {
             scanner,
             saves,
             playtime,
+            integrity,
             app_data_dir,
         })
     }

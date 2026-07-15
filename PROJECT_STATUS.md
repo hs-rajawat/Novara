@@ -1,7 +1,7 @@
 # Project Status
 
-**Date:** 2026-05-29
-**Build:** `cargo check` PASS · `cargo clippy` PASS (0 warnings) · `npm run build` PASS
+**Date:** 2026-07-15
+**Build:** `cargo check` PASS · `cargo clippy` PASS (0 warnings) · `npm run build` PASS · `npm run tauri:dev` PASS (no runtime panic)
 
 ---
 
@@ -22,10 +22,11 @@
 
 | Feature | Location | Notes |
 |---------|----------|-------|
-| SQLite database + migrations | `src-tauri/src/db/` | WAL mode, FK enforcement, connection pool; 3 migrations |
+| SQLite database + migrations | `src-tauri/src/db/` | WAL mode, FK enforcement, connection pool; 5 migrations |
 | Steam library scanner | `src-tauri/src/scanner/steam.rs` | Reads `libraryfolders.vdf` + ACF manifests; multi-library |
 | Manual folder scanner | `src-tauri/src/scanner/manual.rs` | Depth-3 walk, exe detection, size computation |
 | Scanner orchestrator | `src-tauri/src/scanner/mod.rs` | Parallel execution, dedup via upsert, scan audit log |
+| Library Integrity System | `src-tauri/src/integrity/` | Source-aware install-status resolution (Steam manifest `StateFlags` + generic exe/dir check); reused `SteamContext` per sweep; startup + periodic (5 min) verifier; post-scan reconciliation; launch-time recheck + missing-state launch guard; non-destructive Remove/Restore + Locate Executable recovery; background tasks spawned via `tauri::async_runtime::spawn` |
 | Save backup (create) | `src-tauri/src/save_mgr/mod.rs` | Custom `.gvbk` archive, deterministic format |
 | Save restore (atomic) | `src-tauri/src/save_mgr/mod.rs` | Pre-restore auto-backup, atomic directory rename |
 | Save profiles CRUD | `src-tauri/src/db/saves.rs` | Multiple profiles per game; create + delete |
@@ -94,7 +95,7 @@
 | Table | Schema | Backend CRUD | Frontend |
 |-------|--------|-------------|----------|
 | `games` | ✅ | ✅ (+ cover/hero setters) | ✅ |
-| `game_installations` | ✅ | ✅ (+ executable override) | ✅ |
+| `game_installations` | ✅ | ✅ (+ executable override, + integrity status) | ✅ (Missing badge, Locate Executable) |
 | `play_sessions` | ✅ | ✅ | ✅ (timeline) |
 | `achievements` | ✅ | ✅ | ✅ |
 | `achievement_templates` | ✅ | — | — |
@@ -145,6 +146,18 @@
 ---
 
 ## Milestones Completed
+
+### Library Integrity System — Missing Game Detection (2026-07-15)
+- ✅ Steam uninstall detection via manifest-based verification; conservative `StateFlags` handling (absent manifest = missing; only bit 1 Uninstalling treated as not-installed)
+- ✅ Efficient `SteamContext` reuse — Steam discovery once per sweep, not per game
+- ✅ Manual missing-executable detection; shared source-aware `resolve_installation_status`
+- ✅ Startup + periodic (~5 min) background verification; post-scan reconciliation; launch-time recheck + missing-state launch guard
+- ✅ Missing status surfaced to frontend; Missing badge + status-aware Play behavior
+- ✅ Locate Executable recovery; non-destructive Remove/Restore via existing `is_hidden`; Show hidden toggle
+- ✅ Historical data (playtime, sessions, achievements, saves, mods, artwork) preserved across all state changes
+- ✅ `GameUpdated` event propagation + live UI refresh
+- ✅ Tauri runtime panic fixed — background sweeps spawned via `tauri::async_runtime::spawn`
+- ✅ Migrations `0004_install_status.sql`, `0005_install_verified_at.sql`
 
 ### Phase 1 (2026-05-29)
 - ✅ Game launch (`launch_game` + Play button)

@@ -17,15 +17,19 @@ interface Props {
 
 export function GameCard({ game, index = 0 }: Props) {
   const toggleFavorite = useLibrary((s) => s.toggleFavorite);
+  const load = useLibrary((s) => s.load);
   const [launching, setLaunching] = useState(false);
+  const missing = game.primary_install_status === "missing";
 
   async function handlePlay(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (launching) return;
+    if (launching || missing) return;
     setLaunching(true);
     try {
       await api.launchGame(game.id);
+    } catch {
+      // Surfaced to the user via the backend's Notice toast.
     } finally {
       setLaunching(false);
     }
@@ -35,6 +39,13 @@ export function GameCard({ game, index = 0 }: Props) {
     e.preventDefault();
     e.stopPropagation();
     toggleFavorite(game.id);
+  }
+
+  async function handleRestore(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    await api.setHidden(game.id, false);
+    load();
   }
 
   return (
@@ -62,15 +73,30 @@ export function GameCard({ game, index = 0 }: Props) {
             : "Never played"}
         </div>
         <div className="quick-actions">
-          <button
-            type="button"
-            className="qa-btn qa-play"
-            onClick={handlePlay}
-            disabled={launching}
-            title="Play"
-          >
-            <Icon name={launching ? "refresh" : "play"} size={16} className={launching ? "spin" : undefined} />
-          </button>
+          {game.is_hidden ? (
+            <button
+              type="button"
+              className="qa-btn"
+              onClick={handleRestore}
+              title="Restore to library"
+            >
+              <Icon name="rotate-ccw" size={15} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="qa-btn qa-play"
+              onClick={handlePlay}
+              disabled={launching || missing}
+              title={missing ? "Missing — open details to relocate or remove" : "Play"}
+            >
+              <Icon
+                name={launching ? "refresh" : missing ? "alert-triangle" : "play"}
+                size={16}
+                className={launching ? "spin" : undefined}
+              />
+            </button>
+          )}
           <button
             type="button"
             className={clsx("qa-btn", game.is_favorite && "is-on")}

@@ -4,8 +4,10 @@ use std::sync::Arc;
 use tauri::State;
 use crate::db::games::UpsertGame;
 use crate::error::{AppError, AppResult};
-use crate::events::AppEvent;
+use crate::events::{AppEvent, NoticeLevel};
+use crate::integrity::{resolve_installation_status, InstallStatus};
 use crate::models::{Game, Installation};
+use crate::scanner::steam::SteamContext;
 use crate::state::AppState;
 
 /// Copy `src_path` into `<app_data>/artwork/<game_id>/<kind>.<ext>`,
@@ -81,6 +83,11 @@ pub struct GameSummary {
     pub game: Game,
     pub primary_source_code: Option<String>,
     pub primary_source_label: Option<String>,
+    /// Library Integrity status ("installed" | "missing") of the game's
+    /// primary installation, if it has one. Drives the Library grid's
+    /// Missing badge/hide-when-uninstalled-Steam behavior and the Play
+    /// quick-action's disabled state.
+    pub primary_install_status: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -90,6 +97,7 @@ pub struct GameWithInstalls {
     pub installations: Vec<Installation>,
     pub primary_source_code: Option<String>,
     pub primary_source_label: Option<String>,
+    pub primary_install_status: Option<String>,
 }
 
 #[tauri::command]
@@ -104,8 +112,9 @@ pub async fn list_games(
         .map(|g| {
             let source = sources.get(&g.id).cloned();
             GameSummary {
-                primary_source_code: source.as_ref().map(|(code, _)| code.clone()),
-                primary_source_label: source.map(|(_, label)| label),
+                primary_source_code: source.as_ref().map(|s| s.source_code.clone()),
+                primary_source_label: source.as_ref().map(|s| s.source_label.clone()),
+                primary_install_status: source.map(|s| s.status),
                 game: g,
             }
         })
@@ -125,8 +134,9 @@ pub async fn get_game(
     Ok(Some(GameWithInstalls {
         game,
         installations,
-        primary_source_code: source.as_ref().map(|(code, _)| code.clone()),
-        primary_source_label: source.map(|(_, label)| label),
+        primary_source_code: source.as_ref().map(|s| s.source_code.clone()),
+        primary_source_label: source.as_ref().map(|s| s.source_label.clone()),
+        primary_install_status: source.map(|s| s.status),
     }))
 }
 
@@ -160,7 +170,15 @@ pub async fn update_notes(
 
 /// Launch a game by its primary installation.
 ///
-/// Resolution order:
+/// Before choosing how to launch, the installation's Library Integrity
+/// status is re-resolved right here — synchronously, for just this one row
+/// — so Play is blocked deterministically for a Missing installation
+/// regardless of whether any background sweep has caught up yet. This is
+/// what stops a stale "installed" Steam row from redirecting to Steam's
+/// install/store flow, and what turns a manual game's deleted executable
+/// into a clear error instead of a silent no-op.
+///
+/// Resolution order (once confirmed Installed):
 ///   1. `executable` column present → spawn the binary directly.
 ///   2. `source_app_id` present → open a `steam://run/<id>` URI via the OS
 ///      default protocol handler (Steam registers this on install).
@@ -178,6 +196,34 @@ pub async fn launch_game(
         .into_iter()
         .max_by_key(|i| i.is_primary)
         .ok_or_else(|| AppError::NotFound("no installation found for this game".into()))?;
+
+    let source_code = state.db.source_code_for(install.source_id).await?;
+    let steam_ctx = SteamContext::discover();
+    let resolved = resolve_installation_status(
+        &source_code,
+        install.source_app_id.as_deref(),
+        &install.install_dir,
+        install.executable.as_deref(),
+        Some(&steam_ctx),
+    );
+    if resolved.as_str() != install.status {
+        state
+            .db
+            .set_installation_status(&install.id, resolved.as_str())
+            .await?;
+        state.bus.emit(AppEvent::GameUpdated {
+            game_id: game_id.clone(),
+        });
+    }
+    if resolved == InstallStatus::Missing {
+        state.bus.emit(AppEvent::Notice {
+            level: NoticeLevel::Warning,
+            message: "This installation could not be found — it may have been uninstalled, moved, or deleted. Locate its executable or reinstall it from the source launcher.".into(),
+        });
+        return Err(AppError::Invalid(
+            "installation is missing — locate the executable or reinstall".into(),
+        ));
+    }
 
     if let Some(exe_rel) = &install.executable {
         let exe_path = std::path::Path::new(&install.install_dir).join(exe_rel);
@@ -265,6 +311,7 @@ pub async fn import_executable(
             executable: Some(executable),
             install_size_bytes: None,
             executable_override: true,
+            install_state_hint: None,
         })
         .await?;
 
@@ -279,15 +326,34 @@ pub async fn import_executable(
 }
 
 /// Override the executable for an existing installation and lock it so
-/// subsequent rescans will not overwrite the user's choice.
+/// subsequent rescans will not overwrite the user's choice. Also the
+/// "Locate Executable" recovery path for a Missing installation — see
+/// `Db::set_installation_executable`, which restores it to Installed.
 #[tauri::command]
 pub async fn set_installation_executable(
     installation_id: String,
     exe_path: String,
     state: State<'_, Arc<AppState>>,
 ) -> AppResult<()> {
-    state
+    let game_id = state
         .db
         .set_installation_executable(&installation_id, &exe_path)
-        .await
+        .await?;
+    state.bus.emit(AppEvent::GameUpdated { game_id });
+    Ok(())
+}
+
+/// "Remove from Library" (`hidden = true`) / "Restore to Library"
+/// (`hidden = false`). Non-destructive — see `Db::set_hidden`: no row is
+/// deleted, so playtime, sessions, achievements, saves, mods, and artwork
+/// are all preserved. Never touches files on disk.
+#[tauri::command]
+pub async fn set_hidden(
+    id: String,
+    hidden: bool,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<()> {
+    state.db.set_hidden(&id, hidden).await?;
+    state.bus.emit(AppEvent::GameUpdated { game_id: id });
+    Ok(())
 }

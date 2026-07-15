@@ -45,6 +45,8 @@ export const api = {
     invoke<string>("set_cover_path", { gameId, imagePath }),
   setHeroPath: (gameId: string, imagePath: string) =>
     invoke<string>("set_hero_path", { gameId, imagePath }),
+  setHidden: (id: string, hidden: boolean) =>
+    invoke<void>("set_hidden", { id, hidden }),
 
   // scan
   scanNow: () => invoke<ScanReport[]>("scan_paths_now"),

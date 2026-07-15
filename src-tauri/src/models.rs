@@ -47,6 +47,10 @@ pub struct Installation {
     /// 1 if the executable was set manually by the user; scanner will not
     /// overwrite it on subsequent rescans.
     pub executable_override: i64,
+    /// Library Integrity System status: "installed" | "missing" | (future
+    /// user-asserted states). See `crate::integrity`.
+    pub status: String,
+    pub last_verified_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

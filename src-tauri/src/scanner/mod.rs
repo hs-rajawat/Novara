@@ -27,6 +27,13 @@ pub struct DetectedGame {
     pub executable: Option<PathBuf>,
     pub source_app_id: Option<String>,
     pub install_size_bytes: Option<i64>,
+    /// Source-specific installed/not-installed evidence gathered *during
+    /// this scan*, if the scanner has one (e.g. Steam's ACF `StateFlags`,
+    /// read from the same manifest text already parsed for this
+    /// `DetectedGame` — no extra I/O). `None` means "no such evidence";
+    /// the generic install_dir/executable filesystem check applies
+    /// instead. See `crate::integrity`.
+    pub install_state_hint: Option<bool>,
 }
 
 #[async_trait]
@@ -114,6 +121,7 @@ impl ScannerOrchestrator {
                                 executable: exe_str.as_deref(),
                                 install_size_bytes: g.install_size_bytes,
                                 executable_override: false,
+                                install_state_hint: g.install_state_hint,
                             })
                             .await
                         {

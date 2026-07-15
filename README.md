@@ -19,6 +19,7 @@ This repo is the **foundational MVP**. The bones are production-quality and the 
   - **Steam** — parses `libraryfolders.vdf` + `appmanifest_*.acf`
   - **Manual** — walks user-configured folders, picks best executable
 - **Save Manager** — versioned backups (custom `.gvbk` archive), restore with pre-restore safety snapshot
+- **Library Integrity** — detects games uninstalled/moved/deleted (Steam manifest verification + manual executable checks) at startup, on a periodic background sweep, after scans, and at launch; shows a Missing badge with non-destructive Locate Executable and Remove/Restore recovery
 - **Playtime tracker** — explicit start/stop *and* passive process watcher (`sysinfo`, 5s poll)
 - **Achievement system** — custom achievements, toggle unlock, auto-computed completion %
 - Dashboard, Library, Game Details, Achievements, Save Manager, Analytics (heatmap), Timeline, Mods (stub page), Settings — all routed

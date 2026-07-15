@@ -98,6 +98,81 @@ fn find_steam_dir() -> Option<PathBuf> {
     None
 }
 
+/// A one-time snapshot of Steam's library locations, reused across many
+/// `is_installed` checks in a single verification sweep. Discovering
+/// libraries involves probing `find_steam_dir` and re-parsing
+/// `libraryfolders.vdf`; doing that once per sweep (rather than once per
+/// Steam installation row) keeps the Library Integrity System cheap at
+/// 500-1000+ game libraries.
+pub struct SteamContext {
+    libraries: Vec<PathBuf>,
+}
+
+impl SteamContext {
+    /// Probe for Steam and its libraries once. Safe to call even when Steam
+    /// isn't installed — `libraries` is simply empty, and every
+    /// `is_installed` check then (correctly) reports not installed.
+    pub fn discover() -> Self {
+        let libraries = find_steam_dir()
+            .map(|dir| discover_libraries(&dir))
+            .unwrap_or_default();
+        Self { libraries }
+    }
+
+    /// Whether Steam currently reports `app_id` as installed, checked
+    /// against the live manifest across every discovered library — the
+    /// authoritative signal, not just "GameVault has a row for it". A
+    /// manifest absent from every library is the one unambiguous "not
+    /// installed" signal: Steam deletes the `.acf` itself on a real
+    /// uninstall. See `manifest_reports_installed` for the policy applied
+    /// when a manifest *is* found.
+    pub fn is_installed(&self, app_id: &str) -> bool {
+        for lib in &self.libraries {
+            let manifest = lib
+                .join("steamapps")
+                .join(format!("appmanifest_{app_id}.acf"));
+            if let Ok(text) = std::fs::read_to_string(&manifest) {
+                return manifest_reports_installed(&text);
+            }
+        }
+        false
+    }
+}
+
+/// Policy for interpreting a found Steam ACF manifest's `StateFlags` field
+/// (informal/reverse-engineered bitmask; not officially documented by
+/// Valve — commonly observed bits include 1=Uninstalling, 2=UpdateRequired,
+/// 4=FullyInstalled, 64=UpdateRunning, plus various
+/// downloading/validating/staging/committing states).
+///
+/// We default to **Installed** for any manifest that exists, and only
+/// treat bit 1 ("Uninstalling") as a confident "not installed" signal.
+/// Every other transitional state — update pending, paused, downloading,
+/// validating, committing, or a missing/unparseable `StateFlags` field
+/// entirely — is treated as Installed, because those are ordinary states a
+/// normally-installed, launchable game cycles through; flagging them
+/// Missing would hide or disable a game that's actually fine. The only
+/// thing trusted unconditionally is a fully *absent* manifest (handled by
+/// the caller, not here) — Steam deletes the `.acf` file itself on a real
+/// uninstall, which is the actual signal this system exists to catch.
+fn manifest_reports_installed(text: &str) -> bool {
+    let Ok(parsed) = keyvalues_parser::parse(text).map(keyvalues_parser::Vdf::from) else {
+        return true;
+    };
+    let Some(obj) = parsed.value.get_obj() else {
+        return true;
+    };
+    let state_flags = obj
+        .get("StateFlags")
+        .and_then(|v| v.first())
+        .and_then(|v| v.get_str())
+        .and_then(|s| s.parse::<u32>().ok());
+    match state_flags {
+        Some(flags) => flags & 1 == 0,
+        None => true,
+    }
+}
+
 fn discover_libraries(steam_dir: &Path) -> Vec<PathBuf> {
     let mut libs = vec![steam_dir.to_path_buf()];
     let vdf = steam_dir.join("steamapps").join("libraryfolders.vdf");
@@ -151,6 +226,10 @@ fn parse_manifest(path: &Path, steamapps_dir: &Path) -> AppResult<DetectedGame> 
 
     let size: Option<i64> = pick("SizeOnDisk").and_then(|s| s.parse().ok());
 
+    // Reuse the manifest text already parsed above — no extra discovery or
+    // file read needed for the Library Integrity System's scan-time hint.
+    let install_state_hint = Some(manifest_reports_installed(&text));
+
     Ok(DetectedGame {
         source_code: "steam".into(),
         title: name,
@@ -158,5 +237,6 @@ fn parse_manifest(path: &Path, steamapps_dir: &Path) -> AppResult<DetectedGame> 
         executable: None, // Steam launches via steam:// — we'd resolve a binary later if needed
         source_app_id: Some(appid),
         install_size_bytes: size,
+        install_state_hint,
     })
 }

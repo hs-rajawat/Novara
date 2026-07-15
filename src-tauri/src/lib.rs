@@ -4,6 +4,7 @@
 //!   error      — single error type used across services
 //!   events     — tokio broadcast bus for cross-service notifications
 //!   db         — sqlx pool, migrations, typed repositories
+//!   integrity  — Library Integrity System (install status resolution + verifier)
 //!   models     — domain structs (Game, Achievement, …) shared with frontend
 //!   scanner    — pluggable game-source scanners
 //!   metadata   — pluggable metadata providers
@@ -16,6 +17,7 @@ pub mod commands;
 pub mod db;
 pub mod error;
 pub mod events;
+pub mod integrity;
 pub mod metadata;
 pub mod models;
 pub mod playtime;
@@ -62,6 +64,18 @@ pub fn run() {
             // Forward bus events to the frontend.
             state.start_event_forwarder(handle.clone());
 
+            // Library Integrity System: a one-shot sweep at startup (catches
+            // an uninstall that happened while GameVault was closed) plus a
+            // recurring sweep while the app stays open. Both must start
+            // AFTER the event forwarder subscribes above, or any
+            // GameUpdated/Notice they emit is dropped before anything is
+            // listening.
+            state.integrity.clone().spawn_startup_check();
+            state
+                .integrity
+                .clone()
+                .spawn_periodic_check(std::time::Duration::from_secs(300));
+
             app.manage(state);
             Ok(())
         })
@@ -80,6 +94,7 @@ pub fn run() {
             commands::games::set_installation_executable,
             commands::games::set_cover_path,
             commands::games::set_hero_path,
+            commands::games::set_hidden,
             commands::scan::scan_paths_now,
             commands::scan::add_scan_path,
             commands::scan::remove_scan_path,

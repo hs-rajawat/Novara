@@ -4,6 +4,8 @@ use std::sync::Arc;
 use serde_json::json;
 use tauri::State;
 
+use tracing::warn;
+
 use crate::error::AppResult;
 use crate::scanner::ScanReport;
 use crate::state::AppState;
@@ -11,7 +13,18 @@ use crate::state::AppState;
 #[tauri::command]
 pub async fn scan_paths_now(state: State<'_, Arc<AppState>>) -> AppResult<Vec<ScanReport>> {
     let paths = list_scan_paths_internal(&state).await?;
-    state.scanner.run(paths).await
+    let reports = state.scanner.run(paths).await?;
+
+    // Best-effort reconciliation sweep: a full scan pass only touches
+    // installations its scanners currently found, so this catches anything
+    // that quietly vanished (and, symmetrically, confirms a reinstall) for
+    // rows the scan itself didn't revisit. Failure here shouldn't fail the
+    // scan the user actually asked for.
+    if let Err(e) = state.integrity.verify_all().await {
+        warn!(error = %e, "post-scan integrity sweep failed");
+    }
+
+    Ok(reports)
 }
 
 #[tauri::command]
