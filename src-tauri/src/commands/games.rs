@@ -266,14 +266,48 @@ pub async fn launch_game(game_id: String, state: State<'_, Arc<AppState>>) -> Ap
     ))
 }
 
-/// Open a URI with the OS default handler. Uses platform-specific commands
-/// rather than a plugin to keep the dependency surface minimal.
+/// Open a URI with the OS default handler.
+///
+/// On Windows this calls `ShellExecuteW` directly rather than shelling out to
+/// `cmd /c start`. `cmd` treats `&` as a command separator, which silently
+/// truncates deep-link URIs that carry a query string (e.g. Epic's
+/// `...?action=launch&silent=true`) and never launches the game; passing the
+/// URI as one opaque wide-string argument to the shell API avoids any shell
+/// re-parsing. macOS/Linux hand the URI as a single argv entry to
+/// `open`/`xdg-open`, which likewise never shell-split it.
 fn open_uri(uri: &str) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", uri])
-            .spawn()?;
+        use std::os::windows::ffi::OsStrExt;
+
+        // NUL-terminated UTF-16 for the Win32 API.
+        let wide: Vec<u16> = std::ffi::OsStr::new(uri)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let verb: [u16; 5] = [b'o' as u16, b'p' as u16, b'e' as u16, b'n' as u16, 0];
+
+        // SAFETY: `verb` and `wide` are valid NUL-terminated UTF-16 buffers
+        // that outlive the call; all other pointers are null as permitted by
+        // the API. ShellExecuteW does not retain them past the call.
+        let result = unsafe {
+            windows_sys::Win32::UI::Shell::ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                wide.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
+            )
+        };
+        // ShellExecuteW returns a value > 32 on success; anything <= 32 is an
+        // error code.
+        if (result as isize) <= 32 {
+            return Err(std::io::Error::other(format!(
+                "ShellExecuteW failed for {uri} (code {})",
+                result as isize
+            )));
+        }
     }
     #[cfg(target_os = "macos")]
     {

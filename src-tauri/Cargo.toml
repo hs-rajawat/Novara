@@ -54,6 +54,11 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 # crypto for optional db encryption (sqlcipher is heavier; we use sodiumoxide-like sealed boxes for app secrets)
 ring = "0.17"
 
+# Windows: native ShellExecuteW for opening launcher deep-link URIs without
+# shelling out to `cmd /c start` (which mis-parses `&` in query strings).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
