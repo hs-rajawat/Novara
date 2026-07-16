@@ -18,6 +18,7 @@ pub mod db;
 pub mod error;
 pub mod events;
 pub mod integrity;
+pub mod launcher;
 pub mod metadata;
 pub mod models;
 pub mod playtime;

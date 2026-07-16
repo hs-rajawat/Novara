@@ -239,6 +239,13 @@ pub async fn launch_game(game_id: String, state: State<'_, Arc<AppState>>) -> Ap
     // `sources::launch_uri` — no change here.
     if let Some(app_id) = &install.source_app_id {
         if let Some(uri) = crate::sources::launch_uri(&source_code, app_id) {
+            // Some launchers (Epic) drop the launch URI when the URI itself
+            // cold-starts them. Pre-warm ensures the launcher is up and past
+            // its bootstrap before we send the URI once. No-op for launchers
+            // that cold-start correctly on their own (Steam).
+            if let Err(e) = crate::launcher::prewarm_for(&source_code).await {
+                tracing::warn!(error = %e, source = %source_code, "launcher pre-warm failed; sending URI anyway");
+            }
             tracing::info!(source = %source_code, uri = %uri, "launching via launcher URI");
             open_uri(&uri)
                 .map_err(|e| AppError::Other(format!("failed to open launcher URI: {e}")))?;
