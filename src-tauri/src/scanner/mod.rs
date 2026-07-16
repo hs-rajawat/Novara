@@ -16,6 +16,7 @@ use crate::db::{games::UpsertGame, Db};
 use crate::error::AppResult;
 use crate::events::{AppEvent, EventBus};
 
+pub mod epic;
 pub mod manual;
 pub mod steam;
 
@@ -64,8 +65,8 @@ impl ScannerOrchestrator {
         let scanners: Vec<Box<dyn Scanner>> = vec![
             Box::new(steam::SteamScanner),
             Box::new(manual::ManualScanner),
+            Box::new(epic::EpicScanner),
             // Stubs for additional sources — add when implemented.
-            // Box::new(epic::EpicScanner::default()),
             // Box::new(gog::GogScanner::default()),
             // Box::new(xbox::XboxScanner::default()),
         ];

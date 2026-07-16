@@ -3,6 +3,7 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/ipc";
+import { isLauncherManaged } from "@/lib/sources";
 import type { Game } from "@/types";
 
 export type SortMode =
@@ -83,12 +84,12 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 export function selectVisibleGames(state: LibraryState): Game[] {
   const q = state.query.trim().toLowerCase();
   const filtered = state.games.filter((g) => {
-    // Steam games GameVault can no longer confirm as installed are hidden
-    // from the default Library view — their history stays intact and
-    // reachable directly, they just don't clutter the active grid. Manual/
-    // other-source Missing games stay visible (they need the Missing
-    // badge / Locate Executable / Remove from Library flow).
-    if (g.primary_source_code === "steam" && g.primary_install_status === "missing") {
+    // Launcher-managed games (Steam, Epic, …) GameVault can no longer
+    // confirm as installed are hidden from the default Library view — their
+    // history stays intact and reachable directly, they just don't clutter
+    // the active grid. Manual/other-source Missing games stay visible (they
+    // need the Missing badge / Locate Executable / Remove from Library flow).
+    if (isLauncherManaged(g.primary_source_code) && g.primary_install_status === "missing") {
       return false;
     }
     if (q && !g.title.toLowerCase().includes(q)) return false;

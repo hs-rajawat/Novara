@@ -24,6 +24,7 @@ pub mod playtime;
 pub mod save_detect;
 pub mod save_mgr;
 pub mod scanner;
+pub mod sources;
 pub mod state;
 
 use std::sync::Arc;

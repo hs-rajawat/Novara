@@ -1,14 +1,15 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tauri::State;
 use crate::db::games::UpsertGame;
 use crate::error::{AppError, AppResult};
 use crate::events::{AppEvent, NoticeLevel};
 use crate::integrity::{resolve_installation_status, InstallStatus};
 use crate::models::{Game, Installation};
+use crate::scanner::epic::EpicContext;
 use crate::scanner::steam::SteamContext;
 use crate::state::AppState;
+use tauri::State;
 
 /// Copy `src_path` into `<app_data>/artwork/<game_id>/<kind>.<ext>`,
 /// removing any previous file for that kind/game.
@@ -43,8 +44,7 @@ fn copy_artwork(
     }
 
     if src != dest.as_path() {
-        std::fs::copy(src, &dest)
-            .map_err(|e| AppError::Other(format!("copy artwork: {e}")))?;
+        std::fs::copy(src, &dest).map_err(|e| AppError::Other(format!("copy artwork: {e}")))?;
     }
 
     Ok(dest.display().to_string())
@@ -58,7 +58,9 @@ pub async fn set_cover_path(
 ) -> AppResult<String> {
     let stored = copy_artwork(&state.app_data_dir, &game_id, &image_path, "cover")?;
     state.db.set_cover_path(&game_id, &stored).await?;
-    state.bus.emit(AppEvent::GameUpdated { game_id: game_id.clone() });
+    state.bus.emit(AppEvent::GameUpdated {
+        game_id: game_id.clone(),
+    });
     Ok(stored)
 }
 
@@ -70,7 +72,9 @@ pub async fn set_hero_path(
 ) -> AppResult<String> {
     let stored = copy_artwork(&state.app_data_dir, &game_id, &image_path, "hero")?;
     state.db.set_hero_path(&game_id, &stored).await?;
-    state.bus.emit(AppEvent::GameUpdated { game_id: game_id.clone() });
+    state.bus.emit(AppEvent::GameUpdated {
+        game_id: game_id.clone(),
+    });
     Ok(stored)
 }
 
@@ -179,18 +183,20 @@ pub async fn update_notes(
 /// into a clear error instead of a silent no-op.
 ///
 /// Resolution order (once confirmed Installed):
-///   1. `executable` column present → spawn the binary directly.
-///   2. `source_app_id` present → open a `steam://run/<id>` URI via the OS
-///      default protocol handler (Steam registers this on install).
+///   1. `source_app_id` present AND the source is launcher-managed
+///      (`sources::launch_uri` returns a URI) → open that deep-link via the
+///      OS default protocol handler. Steam registers `steam://`, Epic
+///      registers `com.epicgames.launcher://`. URI-first: launcher-managed
+///      titles always go through their launcher even though an `executable`
+///      may be persisted for verification/diagnostics.
+///   2. `executable` column present (non-launcher sources, e.g. manual) →
+///      spawn the binary directly.
 ///   3. Neither → NotFound error.
 ///
 /// A playtime session is opened in both cases; the passive watcher closes it
 /// automatically when the process disappears from the process list.
 #[tauri::command]
-pub async fn launch_game(
-    game_id: String,
-    state: State<'_, Arc<AppState>>,
-) -> AppResult<()> {
+pub async fn launch_game(game_id: String, state: State<'_, Arc<AppState>>) -> AppResult<()> {
     let installs = state.db.list_installations(&game_id).await?;
     let install = installs
         .into_iter()
@@ -199,12 +205,14 @@ pub async fn launch_game(
 
     let source_code = state.db.source_code_for(install.source_id).await?;
     let steam_ctx = SteamContext::discover();
+    let epic_ctx = EpicContext::discover();
     let resolved = resolve_installation_status(
         &source_code,
         install.source_app_id.as_deref(),
         &install.install_dir,
         install.executable.as_deref(),
         Some(&steam_ctx),
+        Some(&epic_ctx),
     );
     if resolved.as_str() != install.status {
         state
@@ -225,24 +233,37 @@ pub async fn launch_game(
         ));
     }
 
+    // Launcher-managed sources (steam, epic, …) launch through their
+    // deep-link URI, even though we persist an executable for verification
+    // and diagnostics. Adding a future launcher is one arm in
+    // `sources::launch_uri` — no change here.
+    if let Some(app_id) = &install.source_app_id {
+        if let Some(uri) = crate::sources::launch_uri(&source_code, app_id) {
+            tracing::info!(source = %source_code, uri = %uri, "launching via launcher URI");
+            open_uri(&uri)
+                .map_err(|e| AppError::Other(format!("failed to open launcher URI: {e}")))?;
+            state.playtime.start(&game_id, None).await?;
+            return Ok(());
+        }
+    }
+
+    // Non-launcher sources (manual) spawn the persisted executable directly.
     if let Some(exe_rel) = &install.executable {
         let exe_path = std::path::Path::new(&install.install_dir).join(exe_rel);
         let _child = std::process::Command::new(&exe_path)
             .current_dir(&install.install_dir)
             .spawn()
             .map_err(|e| AppError::Other(format!("failed to launch executable: {e}")))?;
-        state.playtime.start(&game_id, Some(exe_rel.as_str())).await?;
-    } else if let Some(app_id) = &install.source_app_id {
-        open_uri(&format!("steam://run/{app_id}"))
-            .map_err(|e| AppError::Other(format!("failed to open steam URI: {e}")))?;
-        state.playtime.start(&game_id, None).await?;
-    } else {
-        return Err(AppError::NotFound(
-            "no executable or launch URI for this installation".into(),
-        ));
+        state
+            .playtime
+            .start(&game_id, Some(exe_rel.as_str()))
+            .await?;
+        return Ok(());
     }
 
-    Ok(())
+    Err(AppError::NotFound(
+        "no launch URI or executable for this installation".into(),
+    ))
 }
 
 /// Open a URI with the OS default handler. Uses platform-specific commands
@@ -294,7 +315,11 @@ pub async fn import_executable(
     let title = install_dir
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or_else(|| exe.file_stem().and_then(|s| s.to_str()).unwrap_or("Imported Game"));
+        .unwrap_or_else(|| {
+            exe.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Imported Game")
+        });
     let executable = exe
         .file_name()
         .and_then(|s| s.to_str())

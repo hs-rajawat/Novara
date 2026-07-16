@@ -10,6 +10,7 @@ use tracing::{info, warn};
 use crate::db::Db;
 use crate::error::AppResult;
 use crate::events::{AppEvent, EventBus, NoticeLevel};
+use crate::scanner::epic::EpicContext;
 use crate::scanner::steam::SteamContext;
 
 use super::{is_auto_managed, resolve_installation_status, InstallStatus};
@@ -37,6 +38,7 @@ impl IntegrityService {
     pub async fn verify_all(&self) -> AppResult<VerifyReport> {
         let rows = self.db.list_installation_paths().await?;
         let steam_ctx = SteamContext::discover();
+        let epic_ctx = EpicContext::discover();
         let mut checked = 0u32;
         let mut changed = 0u32;
         let mut newly_missing = 0u32;
@@ -52,6 +54,7 @@ impl IntegrityService {
                 &row.install_dir,
                 row.executable.as_deref(),
                 Some(&steam_ctx),
+                Some(&epic_ctx),
             );
             if resolved.as_str() != row.status {
                 self.db.set_installation_status(&row.id, resolved.as_str()).await?;

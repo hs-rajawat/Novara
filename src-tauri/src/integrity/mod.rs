@@ -6,11 +6,11 @@
 //! background verifier (`integrity::service::IntegrityService`) calls it
 //! too. Keeping the pure checks here — rather than alongside the stateful
 //! service — avoids `db` having to depend on a "service" module that
-//! itself depends on `db`. It DOES depend on `scanner::steam`'s pure,
-//! filesystem-only `SteamContext`/`is_installed` (no `Db`, no orchestrator)
-//! for source-specific Steam evidence — that keeps the dependency graph a
-//! DAG: `scanner::steam` (leaf) -> `integrity` -> `db` -> `scanner`
-//! (orchestrator), no cycle.
+//! itself depends on `db`. It DOES depend on `scanner::{steam,epic}`'s
+//! pure, filesystem-only `SteamContext`/`EpicContext` (no `Db`, no
+//! orchestrator) for source-specific evidence — that keeps the dependency
+//! graph a DAG: `scanner::{steam,epic}` (leaves) -> `integrity` -> `db` ->
+//! `scanner` (orchestrator), no cycle.
 //!
 //! Extending states: add a variant + `as_str`/`FromStr` arm. If the new
 //! state is disk-derived (like Installed/Missing), also extend
@@ -25,6 +25,7 @@ use std::str::FromStr;
 
 use tracing::warn;
 
+use crate::scanner::epic::EpicContext;
 use crate::scanner::steam::SteamContext;
 
 pub mod service;
@@ -99,26 +100,36 @@ pub fn resolve_status(install_dir: &str, executable: Option<&str>) -> InstallSta
 }
 
 /// The shared integration point every source-specific check feeds into:
-/// Steam manifest verification, the generic executable/dir check used by
-/// manual (and any future source without its own evidence), and — one day
-/// — Epic manifest verification, all resolve through here to the one
+/// Steam manifest verification, Epic manifest verification, the generic
+/// executable/dir check used by manual (and any future source without its
+/// own evidence), all resolve through here to the one
 /// `game_installations.status` column that the Library UI, Game Details,
 /// and launch behavior all read.
 ///
-/// `steam` is an already-discovered `SteamContext`, reused by the caller
-/// across every Steam-sourced row in a single verification sweep rather
-/// than rediscovering Steam's library locations per row. Pass `None` only
-/// when no Steam context was built for this call (falls back to the
-/// generic dir check, which is best-effort for a Steam row).
+/// `steam`/`epic` are already-discovered source contexts, reused by the
+/// caller across every row of that source in a single verification sweep
+/// rather than rediscovering library locations per row. Pass `None` when no
+/// context was built for a source (falls back to the generic dir/exe check,
+/// best-effort for that row).
 pub fn resolve_installation_status(
     source_code: &str,
     source_app_id: Option<&str>,
     install_dir: &str,
     executable: Option<&str>,
     steam: Option<&SteamContext>,
+    epic: Option<&EpicContext>,
 ) -> InstallStatus {
     if source_code == "steam" {
         if let (Some(app_id), Some(ctx)) = (source_app_id, steam) {
+            return if ctx.is_installed(app_id) {
+                InstallStatus::Installed
+            } else {
+                InstallStatus::Missing
+            };
+        }
+    }
+    if source_code == "epic" {
+        if let (Some(app_id), Some(ctx)) = (source_app_id, epic) {
             return if ctx.is_installed(app_id) {
                 InstallStatus::Installed
             } else {
