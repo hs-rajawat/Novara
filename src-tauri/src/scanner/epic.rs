@@ -166,13 +166,19 @@ fn find_epic_manifests_dir() -> Option<PathBuf> {
 }
 
 /// A one-time snapshot of Epic's installed games, reused across many
-/// `is_installed` checks in a single verification sweep — the Epic analogue
-/// of `steam::SteamContext`. Discovering means reading the Manifests
-/// directory once (not once per row), keeping the Library Integrity System
-/// cheap. Safe to build even when Epic isn't installed: the map is simply
-/// empty and every `is_installed` check then reports not installed.
+/// `is_installed`/`locate` checks in a single verification sweep — the Epic
+/// analogue of `steam::SteamContext`. Discovering means reading the
+/// Manifests directory once (not once per row), keeping the Library
+/// Integrity System cheap. Safe to build even when Epic isn't installed: the
+/// map is simply empty and every lookup then reports not installed.
+///
+/// Only *complete* installs are stored, each mapped to its
+/// `InstallLocation`. An absent entry means "not installed" (either Epic
+/// deleted the `.item` on uninstall, or the manifest is flagged incomplete /
+/// mid-download). Storing the location is what lets `locate` detect an Epic
+/// game that moved to a new folder.
 pub struct EpicContext {
-    installed: HashMap<String, bool>,
+    installed: HashMap<String, PathBuf>,
 }
 
 impl EpicContext {
@@ -205,10 +211,14 @@ impl EpicContext {
                 if manifest.app_name.is_empty() {
                     continue;
                 }
-                installed.insert(
-                    manifest.app_name.clone(),
-                    epic_manifest_installed(&manifest),
-                );
+                // Only complete installs are recorded, mapped to their
+                // location; incomplete/paused ones are treated as absent.
+                if epic_manifest_installed(&manifest) {
+                    installed.insert(
+                        manifest.app_name.clone(),
+                        PathBuf::from(&manifest.install_location),
+                    );
+                }
             }
         }
         Self { installed }
@@ -219,7 +229,16 @@ impl EpicContext {
     /// unambiguous "not installed" signal — Epic deletes the `.item` on a
     /// real uninstall.
     pub fn is_installed(&self, app_id: &str) -> bool {
-        self.installed.get(app_id).copied().unwrap_or(false)
+        self.installed.contains_key(app_id)
+    }
+
+    /// Where Epic currently reports `app_id` installed (its manifest
+    /// `InstallLocation`), or `None` when not installed. Comparing this to a
+    /// stored `install_dir` is how a *moved* Epic game is detected. Not
+    /// existence-checked here — the offline-drive vs. deleted distinction is
+    /// the caller's job in `integrity`.
+    pub fn locate(&self, app_id: &str) -> Option<PathBuf> {
+        self.installed.get(app_id).cloned()
     }
 }
 
@@ -308,6 +327,37 @@ mod tests {
             !ctx.is_installed("Missing"),
             "absent manifest is not installed"
         );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn locate_returns_install_location_for_move_detection() {
+        let tmp = std::env::temp_dir().join(format!("gv_epic_loc_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        write(
+            &tmp,
+            "a.item",
+            &complete_manifest("Alpha", "D:/NewLibrary/Alpha"),
+        );
+        write(
+            &tmp,
+            "b.item",
+            r#"{"DisplayName":"Beta","InstallLocation":"C:/Games/Beta","LaunchExecutable":"b.exe","AppName":"Beta","bIsIncompleteInstall":true}"#,
+        );
+
+        let ctx = EpicContext::from_dir(&tmp);
+        // Complete install → its location, so a caller can compare against a
+        // stored path to detect a move.
+        assert_eq!(
+            ctx.locate("Alpha"),
+            Some(std::path::PathBuf::from("D:/NewLibrary/Alpha"))
+        );
+        // Incomplete and absent installs have no location.
+        assert_eq!(ctx.locate("Beta"), None);
+        assert_eq!(ctx.locate("Missing"), None);
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

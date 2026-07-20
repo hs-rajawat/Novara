@@ -393,6 +393,16 @@ export function GameDetails() {
                   <Icon name="alert-triangle" size={11} />
                   Missing
                 </span>
+              ) : i.status === "deleted" ? (
+                <span className="save-badge deleted">
+                  <Icon name="alert-triangle" size={11} />
+                  Deleted
+                </span>
+              ) : i.status === "offline" ? (
+                <span className="save-badge offline">
+                  <Icon name="alert-triangle" size={11} />
+                  Drive offline
+                </span>
               ) : (
                 <span className="chip">{formatBytes(i.install_size_bytes ?? 0)}</span>
               )}

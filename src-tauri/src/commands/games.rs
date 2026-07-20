@@ -206,7 +206,7 @@ pub async fn launch_game(game_id: String, state: State<'_, Arc<AppState>>) -> Ap
     let source_code = state.db.source_code_for(install.source_id).await?;
     let steam_ctx = SteamContext::discover();
     let epic_ctx = EpicContext::discover();
-    let resolved = resolve_installation_status(
+    let resolution = resolve_installation_status(
         &source_code,
         install.source_app_id.as_deref(),
         &install.install_dir,
@@ -214,7 +214,30 @@ pub async fn launch_game(game_id: String, state: State<'_, Arc<AppState>>) -> Ap
         Some(&steam_ctx),
         Some(&epic_ctx),
     );
-    if resolved.as_str() != install.status {
+
+    // The launcher reports this game moved since we last saw it — relink the
+    // row to the new directory (history preserved) and launch from there,
+    // rather than blocking Play on a path that's merely stale.
+    let install = if let Some(new_dir) = resolution.relink_to.as_deref() {
+        let new_dir = new_dir.to_string_lossy();
+        state.db.relink_installation(&install.id, &new_dir).await?;
+        state.bus.emit(AppEvent::GameUpdated {
+            game_id: game_id.clone(),
+        });
+        // Re-read so the launch below uses the new directory.
+        state
+            .db
+            .list_installations(&game_id)
+            .await?
+            .into_iter()
+            .max_by_key(|i| i.is_primary)
+            .ok_or_else(|| AppError::NotFound("no installation found for this game".into()))?
+    } else {
+        install
+    };
+
+    let resolved = resolution.status;
+    if resolved.as_str() != install.status && resolution.relink_to.is_none() {
         state
             .db
             .set_installation_status(&install.id, resolved.as_str())
@@ -223,13 +246,13 @@ pub async fn launch_game(game_id: String, state: State<'_, Arc<AppState>>) -> Ap
             game_id: game_id.clone(),
         });
     }
-    if resolved == InstallStatus::Missing {
+    if resolved != InstallStatus::Installed {
         state.bus.emit(AppEvent::Notice {
             level: NoticeLevel::Warning,
-            message: "This installation could not be found — it may have been uninstalled, moved, or deleted. Locate its executable or reinstall it from the source launcher.".into(),
+            message: "This installation could not be found — it may have been uninstalled, moved, deleted, or its drive is disconnected. Locate its executable, reconnect the drive, or reinstall it from the source launcher.".into(),
         });
         return Err(AppError::Invalid(
-            "installation is missing — locate the executable or reinstall".into(),
+            "installation is not available — locate the executable, reconnect the drive, or reinstall".into(),
         ));
     }
 

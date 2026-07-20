@@ -84,12 +84,19 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 export function selectVisibleGames(state: LibraryState): Game[] {
   const q = state.query.trim().toLowerCase();
   const filtered = state.games.filter((g) => {
-    // Launcher-managed games (Steam, Epic, …) NOVARA can no longer
-    // confirm as installed are hidden from the default Library view — their
-    // history stays intact and reachable directly, they just don't clutter
-    // the active grid. Manual/other-source Missing games stay visible (they
-    // need the Missing badge / Locate Executable / Remove from Library flow).
-    if (isLauncherManaged(g.primary_source_code) && g.primary_install_status === "missing") {
+    // Launcher-managed games (Steam, Epic, …) NOVARA can no longer confirm
+    // as installed — the launcher uninstalled them (missing/deleted) — are
+    // hidden from the default Library view: their history stays intact and
+    // reachable directly, they just don't clutter the active grid. Offline
+    // games are kept visible: an unplugged drive is temporary and the game
+    // returns on reconnect, so hiding it would be surprising. Manual /
+    // other-source unavailable games also stay visible (they need the
+    // Missing badge / Locate Executable / Remove from Library flow).
+    if (
+      isLauncherManaged(g.primary_source_code) &&
+      (g.primary_install_status === "missing" ||
+        g.primary_install_status === "deleted")
+    ) {
       return false;
     }
     if (q && !g.title.toLowerCase().includes(q)) return false;

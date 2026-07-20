@@ -42,13 +42,15 @@ impl IntegrityService {
         let mut checked = 0u32;
         let mut changed = 0u32;
         let mut newly_missing = 0u32;
+        let mut newly_deleted = 0u32;
+        let mut relinked = 0u32;
 
         for row in rows {
             checked += 1;
             if !is_auto_managed(&row.status) {
                 continue;
             }
-            let resolved = resolve_installation_status(
+            let resolution = resolve_installation_status(
                 &row.source_code,
                 row.source_app_id.as_deref(),
                 &row.install_dir,
@@ -56,29 +58,58 @@ impl IntegrityService {
                 Some(&steam_ctx),
                 Some(&epic_ctx),
             );
+
+            // A launcher reported the app installed at a new directory — the
+            // game moved. Relink the existing row in place (all history
+            // preserved) rather than flipping it Missing/Deleted; this both
+            // fixes the row and removes any ghost already at the destination.
+            if let Some(new_dir) = resolution.relink_to.as_deref() {
+                let new_dir = new_dir.to_string_lossy();
+                self.db.relink_installation(&row.id, &new_dir).await?;
+                relinked += 1;
+                changed += 1;
+                self.bus.emit(AppEvent::GameUpdated { game_id: row.game_id.clone() });
+                continue;
+            }
+
+            let resolved = resolution.status;
             if resolved.as_str() != row.status {
                 self.db.set_installation_status(&row.id, resolved.as_str()).await?;
                 changed += 1;
-                if resolved == InstallStatus::Missing {
-                    newly_missing += 1;
+                match resolved {
+                    InstallStatus::Missing => newly_missing += 1,
+                    InstallStatus::Deleted => newly_deleted += 1,
+                    _ => {}
                 }
                 self.bus.emit(AppEvent::GameUpdated { game_id: row.game_id.clone() });
             }
         }
 
-        if newly_missing > 0 {
+        // Missing (repairable in place) and Deleted (uninstalled) both mean a
+        // game the user may expect to play is unavailable, so a single
+        // combined warning is enough — Offline transitions are deliberately
+        // silent (a temporary unplugged drive is not a problem to alarm on).
+        let newly_unavailable = newly_missing + newly_deleted;
+        if newly_unavailable > 0 {
             self.bus.emit(AppEvent::Notice {
                 level: NoticeLevel::Warning,
                 message: format!(
-                    "{newly_missing} game{} {} missing {} executable — open the game to locate it",
-                    if newly_missing == 1 { "" } else { "s" },
-                    if newly_missing == 1 { "is" } else { "are" },
-                    if newly_missing == 1 { "its" } else { "their" }
+                    "{newly_unavailable} game{} {} no longer available — {} may have been moved, uninstalled, or deleted",
+                    if newly_unavailable == 1 { "" } else { "s" },
+                    if newly_unavailable == 1 { "is" } else { "are" },
+                    if newly_unavailable == 1 { "it" } else { "they" }
                 ),
             });
         }
 
-        info!(checked, changed, newly_missing, "library integrity check complete");
+        info!(
+            checked,
+            changed,
+            newly_missing,
+            newly_deleted,
+            relinked,
+            "library integrity check complete"
+        );
         Ok(VerifyReport { checked, changed })
     }
 

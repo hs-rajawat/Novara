@@ -127,16 +127,49 @@ impl SteamContext {
     /// uninstall. See `manifest_reports_installed` for the policy applied
     /// when a manifest *is* found.
     pub fn is_installed(&self, app_id: &str) -> bool {
-        for lib in &self.libraries {
-            let manifest = lib
-                .join("steamapps")
-                .join(format!("appmanifest_{app_id}.acf"));
-            if let Ok(text) = std::fs::read_to_string(&manifest) {
-                return manifest_reports_installed(&text);
-            }
-        }
-        false
+        self.locate(app_id).is_some()
     }
+
+    /// Where Steam currently reports `app_id` installed: the
+    /// `steamapps/common/<installdir>` directory derived from the live
+    /// manifest, searched across every discovered library. `None` means the
+    /// app is not installed (no manifest anywhere, or the manifest's
+    /// `StateFlags` say uninstalling). The returned path is Steam's own
+    /// authoritative location, so comparing it to a stored `install_dir` is
+    /// exactly how a *moved* Steam game (e.g. "move install folder" to a
+    /// different library) is detected. The path is not existence-checked
+    /// here — that (and the offline-drive distinction) is the caller's job
+    /// in `integrity`.
+    pub fn locate(&self, app_id: &str) -> Option<PathBuf> {
+        for lib in &self.libraries {
+            let steamapps = lib.join("steamapps");
+            let manifest = steamapps.join(format!("appmanifest_{app_id}.acf"));
+            let Ok(text) = std::fs::read_to_string(&manifest) else {
+                continue;
+            };
+            if !manifest_reports_installed(&text) {
+                return None;
+            }
+            let install_subdir = manifest_install_subdir(&text)?;
+            return Some(steamapps.join("common").join(install_subdir));
+        }
+        None
+    }
+}
+
+/// Pull the `installdir` value out of an ACF manifest — the subfolder under
+/// `steamapps/common` that holds the game. Falls back to `None` when the
+/// field is absent or the text won't parse; callers treat that as
+/// "location unknown".
+fn manifest_install_subdir(text: &str) -> Option<String> {
+    let parsed = keyvalues_parser::parse(text)
+        .map(keyvalues_parser::Vdf::from)
+        .ok()?;
+    let obj = parsed.value.get_obj()?;
+    obj.get("installdir")
+        .and_then(|v| v.first())
+        .and_then(|v| v.get_str())
+        .map(|s| s.to_string())
 }
 
 /// Policy for interpreting a found Steam ACF manifest's `StateFlags` field
