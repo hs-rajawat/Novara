@@ -1,6 +1,6 @@
-# GameVault
+# NOVARA
 
-Local-first game library & progress tracker for any PC game — Steam, Epic, GOG, Xbox, Ubisoft Connect, Battle.net, emulators, or manually installed copies. **No piracy features, no DRM circumvention, no downloads. GameVault never distributes games — it only tracks ones you already own and have installed.**
+Local-first game library & progress tracker for any PC game — Steam, Epic, GOG, Xbox, Ubisoft Connect, Battle.net, emulators, or manually installed copies. **No piracy features, no DRM circumvention, no downloads. NOVARA never distributes games — it only tracks ones you already own and have installed.**
 
 > **Privacy first:** zero telemetry, no network calls by default, encrypted-ready local SQLite, offline mode.
 
@@ -39,7 +39,7 @@ This repo is the **foundational MVP**. The bones are production-quality and the 
 
 ### Explicitly out of scope (and will stay that way)
 
-No downloaders, torrenters, key generators, crack distribution, DRM bypass, license circumvention, account hijacking, paid-game unlocking. GameVault tracks games you've already installed legally — that's it.
+No downloaders, torrenters, key generators, crack distribution, DRM bypass, license circumvention, account hijacking, paid-game unlocking. NOVARA tracks games you've already installed legally — that's it.
 
 ---
 

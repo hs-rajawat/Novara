@@ -2,7 +2,7 @@
 //!
 //! Two modes:
 //!   1. Explicit:  the frontend calls start_session / stop_session
-//!      (used when the user clicks "Play" from inside GameVault).
+//!      (used when the user clicks "Play" from inside NOVARA).
 //!   2. Passive:   a background watcher samples running processes via
 //!      `sysinfo` and matches them to known executables, starting and
 //!      stopping sessions automatically. Idle detection is best-effort

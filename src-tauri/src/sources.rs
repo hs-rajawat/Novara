@@ -6,7 +6,7 @@
 
 /// The deep-link a launcher-managed source launches through. One arm per
 /// launcher — this is the single place to extend for GOG / Xbox / etc.
-/// Returns `None` for sources GameVault launches by spawning an executable
+/// Returns `None` for sources NOVARA launches by spawning an executable
 /// directly (e.g. `manual`).
 pub fn launch_uri(source_code: &str, app_id: &str) -> Option<String> {
     match source_code {

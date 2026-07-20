@@ -67,7 +67,7 @@ export function Settings() {
           Scan paths
         </h2>
         <span className="sub">
-          Folders GameVault will check for manually-installed games.
+          Folders NOVARA will check for manually-installed games.
         </span>
       </div>
 
@@ -121,7 +121,7 @@ export function Settings() {
       <div className="list fade-up" style={{ animationDelay: "60ms" }}>
         <Toggle
           label="Telemetry"
-          desc="Off by default. GameVault never sends data anywhere."
+          desc="Off by default. NOVARA never sends data anywhere."
           value={!!settings.telemetry_enabled}
           onChange={(v) => setSetting("telemetry_enabled", v)}
         />

@@ -1,4 +1,4 @@
-//! GameVault — Rust core.
+//! NOVARA — Rust core.
 //!
 //! Crate layout:
 //!   error      — single error type used across services
@@ -67,7 +67,7 @@ pub fn run() {
             state.start_event_forwarder(handle.clone());
 
             // Library Integrity System: a one-shot sweep at startup (catches
-            // an uninstall that happened while GameVault was closed) plus a
+            // an uninstall that happened while NOVARA was closed) plus a
             // recurring sweep while the app stays open. Both must start
             // AFTER the event forwarder subscribes above, or any
             // GameUpdated/Notice they emit is dropped before anything is

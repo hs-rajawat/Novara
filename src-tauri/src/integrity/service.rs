@@ -99,7 +99,7 @@ impl IntegrityService {
 
     /// Recurring re-verification while the app stays open, so a Steam or
     /// manual uninstall happening mid-session is caught without the user
-    /// having to restart GameVault or click Play first. `verify_all` is
+    /// having to restart NOVARA or click Play first. `verify_all` is
     /// cheap (one Steam discovery plus small stat/file reads per
     /// installation), so this cadence is not "expensive polling."
     ///

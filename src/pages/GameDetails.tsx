@@ -411,7 +411,7 @@ export function GameDetails() {
                 onClick={() => browseExe(i.id)}
                 title={
                   i.status === "missing"
-                    ? "Point GameVault at this game's executable to restore it"
+                    ? "Point NOVARA at this game's executable to restore it"
                     : "Choose a different executable for this installation"
                 }
               >

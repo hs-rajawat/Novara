@@ -1,7 +1,7 @@
 [package]
 name = "gamevault"
 version = "0.1.0"
-description = "GameVault - local-first game library tracker"
+description = "NOVARA - local-first game library tracker"
 edition = "2021"
 rust-version = "1.77"
 

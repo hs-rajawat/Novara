@@ -33,7 +33,7 @@ export function TopBar() {
 
   const title =
     TITLES[loc.pathname] ??
-    (loc.pathname.startsWith("/library/") ? "Game Details" : "GameVault");
+    (loc.pathname.startsWith("/library/") ? "Game Details" : "NOVARA");
 
   // "/" focuses search from anywhere; Escape clears + blurs it.
   useEffect(() => {

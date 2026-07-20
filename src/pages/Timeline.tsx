@@ -41,7 +41,7 @@ export function Timeline() {
 
       {sessions.length === 0 ? (
         <EmptyState icon="history" title="No sessions yet">
-          Sessions appear here once GameVault detects a tracked game running.
+          Sessions appear here once NOVARA detects a tracked game running.
         </EmptyState>
       ) : (
         groups.map(([day, daySessions], gi) => (

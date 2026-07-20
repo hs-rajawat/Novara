@@ -1,4 +1,4 @@
-# GameVault — Development Roadmap
+# NOVARA — Development Roadmap
 
 **App:** Local-first game library & progress tracker (Tauri 2 + React 18 + SQLite)  
 **Version:** 0.1.0  
@@ -121,7 +121,7 @@ npm run typecheck  # → no output (pass)
 - ✅ Efficient `SteamContext` reuse — Steam library discovery happens once per sweep, not per game (cheap at 500–1000+ libraries).
 - ✅ Manual missing-executable detection via the generic install-dir/executable filesystem check.
 - ✅ Shared, source-aware installation status resolution (`resolve_installation_status`) — the single point Steam, manual, and future sources feed into.
-- ✅ Startup integrity verification (one-shot sweep, catches uninstalls that happened while GameVault was closed).
+- ✅ Startup integrity verification (one-shot sweep, catches uninstalls that happened while NOVARA was closed).
 - ✅ Periodic background integrity verification (~5 min recurring sweep).
 - ✅ Post-scan best-effort reconciliation.
 - ✅ Launch-time installation recheck + missing-state launch guard (blocks Play on a stale row deterministically).

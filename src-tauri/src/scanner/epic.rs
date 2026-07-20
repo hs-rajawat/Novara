@@ -20,7 +20,7 @@ use super::{DetectedGame, Scanner};
 
 /// Epic install manifest (`.item`). `#[serde(default)]` at the struct level
 /// makes every field optional: a missing or newly-added Epic field never
-/// fails the parse, it just yields a default. Only the fields GameVault
+/// fails the parse, it just yields a default. Only the fields NOVARA
 /// needs are modeled; everything else in the JSON is ignored.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "PascalCase")]

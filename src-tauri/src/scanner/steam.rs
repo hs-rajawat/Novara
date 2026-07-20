@@ -121,7 +121,7 @@ impl SteamContext {
 
     /// Whether Steam currently reports `app_id` as installed, checked
     /// against the live manifest across every discovered library — the
-    /// authoritative signal, not just "GameVault has a row for it". A
+    /// authoritative signal, not just "NOVARA has a row for it". A
     /// manifest absent from every library is the one unambiguous "not
     /// installed" signal: Steam deletes the `.acf` itself on a real
     /// uninstall. See `manifest_reports_installed` for the policy applied

@@ -84,7 +84,7 @@ export const useLibrary = create<LibraryState>((set, get) => ({
 export function selectVisibleGames(state: LibraryState): Game[] {
   const q = state.query.trim().toLowerCase();
   const filtered = state.games.filter((g) => {
-    // Launcher-managed games (Steam, Epic, …) GameVault can no longer
+    // Launcher-managed games (Steam, Epic, …) NOVARA can no longer
     // confirm as installed are hidden from the default Library view — their
     // history stays intact and reachable directly, they just don't clutter
     // the active grid. Manual/other-source Missing games stay visible (they
