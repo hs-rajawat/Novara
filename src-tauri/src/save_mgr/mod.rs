@@ -1,22 +1,39 @@
 //! Save manager.
 //!
-//! Backups are simple zip-style archives of a watched folder, stored
-//! under <app_data>/backups/<profile_id>/<timestamp>.zip. Versioned
-//! by timestamp; restore extracts atomically to a sibling temp dir,
-//! then swaps directory names.
+//! Backups are archives of a watched folder, stored under
+//! `<app_data>/backups/<profile_id>/<timestamp>.gvbk`. Versioned by timestamp.
+//! The archive format, and everything about treating an archive as untrusted
+//! input, lives in [`archive`].
 //!
-//! For the MVP we implement an *uncompressed tar* using only the
-//! standard library so no extra dependency is required. Production
-//! deployments can swap to `zip` or `zstd` behind the same trait.
+//! # Restore is the dangerous operation
+//!
+//! Restore replaces a directory of the user's save data. The ordering here is
+//! deliberate and each step exists because of a specific way the previous
+//! implementation could lose data:
+//!
+//! 1. Take a safety backup **and require it to succeed**. Its result used to be
+//!    discarded with `let _ =`, so a restore would proceed even when its own undo
+//!    path had failed.
+//! 2. Validate and extract the archive to a temporary sibling directory. Nothing
+//!    touches the live folder until this has fully succeeded.
+//! 3. Move the live folder aside, move the extraction into place, then remove the
+//!    displaced copy — it is redundant now that step 1 is guaranteed. Previously
+//!    it was kept forever under a `.gvprev.<timestamp>` name, so every restore
+//!    permanently grew the user's app-data directory.
+//! 4. If any of step 3 fails, put the original folder back.
+
+pub mod archive;
 
 use std::fs;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+
+use tracing::warn;
 
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::events::{AppEvent, EventBus};
-use crate::models::now_rfc3339;
+
+use archive::{compile_glob, read_archive, sibling_with_suffix, write_archive};
 
 #[derive(Clone)]
 pub struct SaveManager {
@@ -37,7 +54,11 @@ impl SaveManager {
     pub fn new(db: Db, bus: EventBus, app_data_dir: &Path) -> AppResult<Self> {
         let backups_root = app_data_dir.join("backups");
         fs::create_dir_all(&backups_root)?;
-        Ok(Self { db, bus, backups_root })
+        Ok(Self {
+            db,
+            bus,
+            backups_root,
+        })
     }
 
     pub async fn backup(&self, profile_id: &str, note: Option<&str>) -> AppResult<BackupResult> {
@@ -47,23 +68,43 @@ impl SaveManager {
             .await?
             .ok_or_else(|| AppError::NotFound(format!("save profile {profile_id}")))?;
         let source = PathBuf::from(&profile.source_dir);
-        if !source.exists() {
+        if !source.is_dir() {
             return Err(AppError::SaveMgr(format!(
                 "source dir does not exist: {}",
                 source.display()
             )));
         }
 
+        // `save_profiles.glob` was accepted through the whole stack and then
+        // ignored by the archiver, so a user could set a filter that did
+        // nothing. Compiled here so an invalid pattern is reported before any
+        // work happens.
+        let filter = compile_glob(profile.glob.as_deref())?;
+
         let dest_dir = self.backups_root.join(profile_id);
         fs::create_dir_all(&dest_dir)?;
-        let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%S").to_string();
-        let archive_path = dest_dir.join(format!("{timestamp}.gvbk"));
+        let archive_path = unique_archive_path(&dest_dir)?;
 
-        let (size, files) = write_archive(&source, &archive_path)?;
+        // Archiving is unbounded filesystem I/O — potentially gigabytes — so it
+        // runs on the blocking pool rather than stalling a tokio worker.
+        let stats = {
+            let (source, archive_path) = (source.clone(), archive_path.clone());
+            tauri::async_runtime::spawn_blocking(move || {
+                write_archive(&source, &archive_path, filter.as_ref())
+            })
+            .await
+            .map_err(|e| AppError::SaveMgr(format!("backup task failed: {e}")))??
+        };
 
         let id = self
             .db
-            .record_backup(profile_id, archive_path.to_string_lossy().as_ref(), size, files, note)
+            .record_backup(
+                profile_id,
+                archive_path.to_string_lossy().as_ref(),
+                stats.total_bytes,
+                stats.file_count,
+                note,
+            )
             .await?;
 
         self.bus.emit(AppEvent::SaveBackupCreated {
@@ -74,8 +115,8 @@ impl SaveManager {
         Ok(BackupResult {
             backup_id: id,
             archive_path,
-            size_bytes: size,
-            file_count: files,
+            size_bytes: stats.total_bytes,
+            file_count: stats.file_count,
         })
     }
 
@@ -93,95 +134,165 @@ impl SaveManager {
         let archive = PathBuf::from(&backup.archive_path);
         let target = PathBuf::from(&profile.source_dir);
 
-        // Safety net: take a fresh backup of the current state before
-        // restoring, so users can undo. The note tags it as auto.
-        let _ = self.backup(&profile.id, Some("pre-restore auto-backup")).await;
-
-        // Atomic-ish: extract to a sibling tmp dir, then rename.
-        let tmp = target.with_extension(format!("gvrestore.{}", now_rfc3339().replace(':', "-")));
-        fs::create_dir_all(&tmp)?;
-        read_archive(&archive, &tmp)?;
-        // Move existing target out of the way (don't delete user data outright).
-        if target.exists() {
-            let trash = target.with_extension(format!("gvprev.{}", now_rfc3339().replace(':', "-")));
-            fs::rename(&target, &trash)?;
+        if !archive.is_file() {
+            return Err(AppError::SaveMgr(format!(
+                "backup archive is missing: {}",
+                archive.display()
+            )));
         }
-        fs::rename(&tmp, &target)?;
-        Ok(())
+
+        // A save location that exists but is not a directory means the profile
+        // is misconfigured. Refuse rather than replace it: the safety-backup step
+        // below cannot archive a file, so continuing would silently swap the
+        // user's file for a directory with no way back.
+        if target.exists() && !target.is_dir() {
+            return Err(AppError::SaveMgr(format!(
+                "the save location is not a directory: {}. \
+                 Nothing has been changed; check this save profile's folder.",
+                target.display()
+            )));
+        }
+
+        // Safety net: a fresh backup of the current state, so the restore can be
+        // undone. Its failure is fatal — proceeding without a working undo path
+        // is how a bad restore becomes unrecoverable. Only skipped when there is
+        // nothing to preserve.
+        if target.is_dir() {
+            self.backup(&profile.id, Some("pre-restore auto-backup"))
+                .await
+                .map_err(|e| {
+                    AppError::SaveMgr(format!(
+                        "refusing to restore: the safety backup of your current saves failed \
+                         ({e}). Your existing save data has not been touched."
+                    ))
+                })?;
+        }
+
+        // Sibling paths built by appending to the *whole* file name. Using
+        // `Path::with_extension` here replaced everything after the last dot, so
+        // for a folder like `S.T.A.L.K.E.R.` the "sibling" was a different path
+        // entirely and the restore wrote somewhere unintended.
+        let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%.3f").to_string();
+        let staging = sibling_with_suffix(&target, &format!("gvrestore.{stamp}"))?;
+        let displaced = sibling_with_suffix(&target, &format!("gvprev.{stamp}"))?;
+
+        // Extract to staging first: the live folder is untouched until the
+        // archive has been fully validated and written out.
+        let extraction = {
+            let (archive, staging) = (archive.clone(), staging.clone());
+            tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
+                fs::create_dir_all(&staging).map_err(|e| {
+                    AppError::SaveMgr(format!("create {}: {e}", staging.display()))
+                })?;
+                read_archive(&archive, &staging).map(|_| ())
+            })
+            .await
+            .map_err(|e| AppError::SaveMgr(format!("restore task failed: {e}")))?
+        };
+        if let Err(e) = extraction {
+            // Nothing has been moved yet, so cleaning up staging restores the
+            // world exactly as it was.
+            remove_dir_best_effort(&staging);
+            return Err(e);
+        }
+
+        let target_for_swap = target.clone();
+        let staging_for_swap = staging.clone();
+        let swap = tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
+            let had_target = target_for_swap.is_dir();
+            if had_target {
+                fs::rename(&target_for_swap, &displaced).map_err(|e| {
+                    AppError::SaveMgr(format!(
+                        "move existing saves aside ({} -> {}): {e}",
+                        target_for_swap.display(),
+                        displaced.display()
+                    ))
+                })?;
+            }
+            if let Err(e) = fs::rename(&staging_for_swap, &target_for_swap) {
+                // Put the user's saves back before reporting failure; leaving
+                // them parked under a temporary name would look like data loss.
+                if had_target {
+                    if let Err(rollback) = fs::rename(&displaced, &target_for_swap) {
+                        return Err(AppError::SaveMgr(format!(
+                            "restore failed ({e}) AND rolling back failed ({rollback}). \
+                             Your previous saves are at {}",
+                            displaced.display()
+                        )));
+                    }
+                }
+                return Err(AppError::SaveMgr(format!(
+                    "restore failed while installing the backup: {e}. \
+                     Your previous saves have been left in place."
+                )));
+            }
+            // The displaced copy is redundant: the guaranteed safety backup
+            // above holds exactly this state as a verifiable archive. Keeping it
+            // is what made every restore grow the app-data directory without
+            // bound.
+            if had_target {
+                if let Err(e) = fs::remove_dir_all(&displaced) {
+                    warn!(
+                        path = %displaced.display(),
+                        error = %e,
+                        "restore succeeded but the displaced save folder could not be removed"
+                    );
+                }
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| AppError::SaveMgr(format!("restore swap task failed: {e}")))?;
+
+        if swap.is_err() {
+            remove_dir_best_effort(&staging);
+        }
+        swap
     }
 }
 
-// ───────── archive format (very small custom format) ─────────
-// HEADER:  b"GVBK\x01"
-// ENTRIES: repeated [u32 path_len][path][u64 file_size][bytes]
-// EOF:     u32 == 0 (zero-length path = end marker)
-//
-// Chosen because:
-//   * no extra deps
-//   * deterministic file order
-//   * straightforward to read sequentially
-// Replace with `zip` for compression / external tooling compatibility.
-
-fn write_archive(source: &Path, dest: &Path) -> AppResult<(i64, i64)> {
-    use walkdir::WalkDir;
-    let mut out = fs::File::create(dest)?;
-    out.write_all(b"GVBK\x01")?;
-    let mut total: i64 = 0;
-    let mut files: i64 = 0;
-
-    let entries: Vec<_> = WalkDir::new(source)
-        .into_iter()
-        .filter_map(|r| r.ok())
-        .filter(|e| e.file_type().is_file())
-        .collect();
-
-    for entry in entries {
-        let path = entry.path();
-        let rel = path.strip_prefix(source).map_err(|e| AppError::Other(e.to_string()))?;
-        let rel_str = rel.to_string_lossy().replace('\\', "/");
-        let rel_bytes = rel_str.as_bytes();
-        if rel_bytes.is_empty() {
-            continue;
+/// A backup archive path that does not already exist.
+///
+/// Names were `%Y%m%dT%H%M%S.gvbk` — one second of resolution. Two backups of
+/// the same profile within the same second therefore produced the *same
+/// filename*, and the second silently overwrote the first while leaving two
+/// database rows pointing at one file.
+///
+/// That is not a theoretical race: `restore` takes a pre-restore safety backup
+/// immediately before extracting, so restoring a backup taken moments earlier
+/// overwrote the very archive being restored — and then restored the state it had
+/// just captured, reporting success. Milliseconds plus an explicit existence
+/// check close it; the loop covers the remaining case of two backups inside the
+/// same millisecond.
+fn unique_archive_path(dest_dir: &Path) -> AppResult<PathBuf> {
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%.3f").to_string();
+    let base = stamp.replace('.', "-");
+    for attempt in 0..100 {
+        let name = if attempt == 0 {
+            format!("{base}.gvbk")
+        } else {
+            format!("{base}-{attempt}.gvbk")
+        };
+        let candidate = dest_dir.join(name);
+        if !candidate.exists() {
+            return Ok(candidate);
         }
-        out.write_all(&(rel_bytes.len() as u32).to_le_bytes())?;
-        out.write_all(rel_bytes)?;
-        let bytes = fs::read(path)?;
-        out.write_all(&(bytes.len() as u64).to_le_bytes())?;
-        out.write_all(&bytes)?;
-        total = total.saturating_add(bytes.len() as i64);
-        files += 1;
     }
-    out.write_all(&0u32.to_le_bytes())?; // EOF marker
-    Ok((total, files))
+    Err(AppError::SaveMgr(
+        "could not find an unused backup filename".into(),
+    ))
 }
 
-fn read_archive(archive: &Path, dest: &Path) -> AppResult<()> {
-    let mut f = fs::File::open(archive)?;
-    let mut header = [0u8; 5];
-    f.read_exact(&mut header)?;
-    if &header != b"GVBK\x01" {
-        return Err(AppError::SaveMgr("not a gvbk archive".into()));
-    }
-    loop {
-        let mut len_buf = [0u8; 4];
-        f.read_exact(&mut len_buf)?;
-        let len = u32::from_le_bytes(len_buf);
-        if len == 0 {
-            break;
+fn remove_dir_best_effort(path: &Path) {    if path.exists() {
+        if let Err(e) = fs::remove_dir_all(path) {
+            warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to clean up temporary restore directory"
+            );
         }
-        let mut path_buf = vec![0u8; len as usize];
-        f.read_exact(&mut path_buf)?;
-        let rel = String::from_utf8(path_buf).map_err(|e| AppError::SaveMgr(e.to_string()))?;
-        let mut size_buf = [0u8; 8];
-        f.read_exact(&mut size_buf)?;
-        let size = u64::from_le_bytes(size_buf);
-        let mut data = vec![0u8; size as usize];
-        f.read_exact(&mut data)?;
-        let out_path = dest.join(rel);
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(out_path, data)?;
     }
-    Ok(())
 }
+
+#[cfg(test)]
+mod tests;

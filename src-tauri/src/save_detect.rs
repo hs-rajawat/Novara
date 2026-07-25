@@ -36,17 +36,21 @@ pub fn detect(title: &str) -> Vec<DetectedPath> {
         }
     }
 
-    // Sort descending, remove duplicate paths (keep highest-confidence copy).
+    // Sort descending by confidence, then keep the first occurrence of each
+    // path — which, after the sort, is its highest-confidence copy.
     results.sort_by(|a, b| {
         b.confidence
             .partial_cmp(&a.confidence)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    results.dedup_by(|newer, older| {
-        // dedup iterates pairs (newer, older); keep older (higher conf) when
-        // paths match.
-        newer.path == older.path
-    });
+    // `dedup_by` only removes *adjacent* equal elements, and after sorting by
+    // confidence two entries for the same path are adjacent only if their
+    // confidences happen to tie. The same folder reached through two candidate
+    // roots therefore appeared twice in the detection panel, despite the comment
+    // claiming otherwise. Tracking what has been seen is what actually
+    // deduplicates a list that is not sorted by the dedup key.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    results.retain(|candidate| seen.insert(candidate.path.clone()));
 
     results
 }

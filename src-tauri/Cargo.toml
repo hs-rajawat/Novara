@@ -48,6 +48,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 walkdir = "2.5"
 dirs = "5"
 keyvalues-parser = "0.2"  # parse Steam VDF files
+# Glob matching for save_profiles.glob. A hand-rolled matcher is a classic
+# source of subtle bugs (character classes, `**` semantics, escaping); globset
+# is the matcher ripgrep uses and is well exercised.
+globset = "=0.4.19"
 
 # system
 sysinfo = "0.31"
