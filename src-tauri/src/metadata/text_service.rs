@@ -30,9 +30,14 @@ pub struct MetadataService {
 }
 
 impl MetadataService {
-    pub fn new(db: Db, bus: EventBus, client: reqwest::Client) -> Self {
+    pub fn new(
+        db: Db,
+        bus: EventBus,
+        client: reqwest::Client,
+        throttle: Arc<crate::metadata::throttle::Throttle>,
+    ) -> Self {
         let mut providers: Vec<Arc<dyn MetadataTextProvider>> = vec![
-            Arc::new(SteamCdnProvider::new(client)),
+            Arc::new(SteamCdnProvider::new(client, throttle)),
             Arc::new(EpicCatalogProvider::new()),
             Arc::new(OfflineProvider),
         ];
@@ -45,7 +50,9 @@ impl MetadataService {
     /// — gated by the caller (composition root / command handler), since
     /// this service doesn't read settings itself.
     pub async fn fill_missing(&self, allow_network: bool) -> AppResult<FillReport> {
-        let games = self.db.list_games(true).await?;
+        // Hidden games are excluded: the user removed them from the library,
+        // so fetching metadata for them is work nobody asked for.
+        let games = self.db.list_games(false).await?;
         let mut checked = 0u32;
         let mut updated = 0u32;
         let mut circuit_broken: HashSet<&'static str> = HashSet::new();

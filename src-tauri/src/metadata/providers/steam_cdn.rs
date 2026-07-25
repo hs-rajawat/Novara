@@ -15,11 +15,13 @@
 //! it further across a large batch.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde::Deserialize;
 
+use crate::metadata::throttle::Throttle;
 use crate::metadata::{
     ArtworkKind, ArtworkProvider, AssetDescriptor, AssetSource, GameMetadata, Lookup,
     LookupContext, MetadataTextProvider, PermanentReason, ProviderCapabilities, ProviderIdentity,
@@ -44,11 +46,18 @@ const CDN_ASSETS: [(ArtworkKind, &str); 3] = [
 
 pub struct SteamCdnProvider {
     client: reqwest::Client,
+    /// Shared with every other network provider and with asset downloads, so
+    /// the cap applies to NOVARA's total outbound rate rather than per call
+    /// site. Steam does not document a rate limit for these endpoints but
+    /// answers 429 under sustained load, and a first scan of a large library
+    /// otherwise issues one `appdetails` GET plus three CDN HEADs per game as
+    /// fast as the fill loop runs.
+    throttle: Arc<Throttle>,
 }
 
 impl SteamCdnProvider {
-    pub fn new(client: reqwest::Client) -> Self {
-        Self { client }
+    pub fn new(client: reqwest::Client, throttle: Arc<Throttle>) -> Self {
+        Self { client, throttle }
     }
 }
 
@@ -132,14 +141,16 @@ impl MetadataTextProvider for SteamCdnProvider {
             return Lookup::Unsupported;
         }
 
-        let resp = match self
-            .client
-            .get(APPDETAILS_URL)
-            .query(&[("appids", app_id), ("l", "english")])
-            .timeout(REQUEST_TIMEOUT)
-            .send()
-            .await
-        {
+        let resp = {
+            let _slot = self.throttle.acquire().await;
+            self.client
+                .get(APPDETAILS_URL)
+                .query(&[("appids", app_id), ("l", "english")])
+                .timeout(REQUEST_TIMEOUT)
+                .send()
+                .await
+        };
+        let resp = match resp {
             Ok(r) => r,
             Err(e) if e.is_timeout() => return Lookup::Temporary(TemporaryReason::Timeout),
             Err(e) => return Lookup::Temporary(TemporaryReason::NetworkError(e.to_string())),
@@ -221,7 +232,11 @@ impl ArtworkProvider for SteamCdnProvider {
             // later by `metadata::store::store_remote_asset` once
             // `ArtworkService` decides this descriptor should actually be
             // fetched (e.g. it isn't shadowed by a `user_locked` asset).
-            let resp = match self.client.head(&url).timeout(REQUEST_TIMEOUT).send().await {
+            let resp = {
+                let _slot = self.throttle.acquire().await;
+                self.client.head(&url).timeout(REQUEST_TIMEOUT).send().await
+            };
+            let resp = match resp {
                 Ok(r) => r,
                 Err(e) if e.is_timeout() => return Lookup::Temporary(TemporaryReason::Timeout),
                 Err(e) => return Lookup::Temporary(TemporaryReason::NetworkError(e.to_string())),

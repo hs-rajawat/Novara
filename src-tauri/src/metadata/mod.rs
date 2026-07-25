@@ -33,6 +33,10 @@ pub mod offline;
 pub mod providers;
 pub mod store;
 pub mod text_service;
+pub mod throttle;
+
+#[cfg(test)]
+mod tests;
 
 /// Descriptive (non-visual) metadata a `MetadataTextProvider` can supply.
 /// Anything left `None`/empty is simply not written over the existing value.

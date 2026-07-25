@@ -46,12 +46,23 @@ impl AppState {
         // connections across the whole app rather than each provider paying
         // its own TLS/DNS setup cost per call.
         let http_client = reqwest::Client::new();
-        let metadata = Arc::new(MetadataService::new(db.clone(), bus.clone(), http_client.clone()));
+        // One throttle for the whole application, so the concurrency cap and
+        // minimum request spacing bound NOVARA's *total* outbound rate rather
+        // than each call site's. Both fill services and asset downloads share
+        // it deliberately.
+        let throttle = Arc::new(crate::metadata::throttle::Throttle::default());
+        let metadata = Arc::new(MetadataService::new(
+            db.clone(),
+            bus.clone(),
+            http_client.clone(),
+            throttle.clone(),
+        ));
         let artwork = Arc::new(ArtworkService::new(
             db.clone(),
             bus.clone(),
             app_data_dir.clone(),
             http_client,
+            throttle,
         ));
 
         // Reconcile sessions left open by a previous run before the watcher

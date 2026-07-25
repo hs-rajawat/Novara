@@ -319,6 +319,10 @@ mod harness_tests {
 
     /// The fixture must produce a real, migrated schema — not an empty
     /// database that silently passes every assertion.
+    ///
+    /// The expected version is derived from the migrations directory rather
+    /// than hardcoded, so adding a migration cannot leave this test asserting
+    /// a stale number.
     #[tokio::test]
     async fn fixture_runs_all_migrations() {
         let db = test_db().await;
@@ -327,7 +331,19 @@ mod harness_tests {
                 .fetch_one(&db.pool)
                 .await
                 .expect("read migration state");
-        assert_eq!(version, 6, "all six migrations should be applied");
+
+        let expected = std::fs::read_dir(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations"),
+        )
+        .expect("read migrations dir")
+        .filter_map(Result::ok)
+        .filter(|e| e.path().extension().is_some_and(|x| x == "sql"))
+        .count() as i64;
+
+        assert_eq!(
+            version, expected,
+            "every migration on disk should be applied"
+        );
     }
 
     /// Regression guard for the pooling subtlety documented on `test_db`:

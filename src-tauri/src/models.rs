@@ -73,6 +73,13 @@ pub struct ArtworkAsset {
     pub user_locked: i64,
     pub fetched_at: Option<String>,
     pub updated_at: String,
+    /// Consecutive failed attempts for this slot; reset to 0 on success.
+    pub attempts: i64,
+    /// Earliest time this slot may be attempted again. NULL means "now".
+    pub next_retry_at: Option<String>,
+    /// Origin `Last-Modified`, sent back as `If-Modified-Since` on refresh.
+    /// Kept alongside `etag` because not every origin honours both.
+    pub last_modified: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
