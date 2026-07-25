@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
 import { api, onEvent } from "@/lib/ipc";
+import { notify, reportError } from "@/lib/toast";
 import type { CompletionState, GameWithInstalls, Installation, PlaySession } from "@/types";
 import {
   formatBytes,
@@ -57,17 +58,29 @@ export function GameDetails() {
   // Executable), should show up without a manual refresh.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
     onEvent((ev) => {
       if (ev.type === "session_ended" && ev.game_id === id) {
-        api.listSessions(id, RECENT_SESSIONS_LIMIT).then(setSessions);
+        api
+          .listSessions(id, RECENT_SESSIONS_LIMIT)
+          .then(setSessions)
+          .catch((e) => reportError(e, "refresh recent sessions"));
       }
       if (ev.type === "game_updated" && ev.game_id === id) {
-        api.getGame(id).then(setGame);
+        api
+          .getGame(id)
+          .then(setGame)
+          .catch((e) => reportError(e, "refresh this game"));
       }
     }).then((fn) => {
-      unlisten = fn;
+      // GameDetails unmounts on every navigation, so without this guard a
+      // listener registered after unmount is never detached and they
+      // accumulate for the whole session.
+      if (cancelled) fn();
+      else unlisten = fn;
     });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [id]);
@@ -81,19 +94,29 @@ export function GameDetails() {
   }
 
   async function setState(s: CompletionState) {
-    await api.setCompletion(id, game!.completion_pct, s);
-    setGame(await api.getGame(id));
+    try {
+      await api.setCompletion(id, game!.completion_pct, s);
+      setGame(await api.getGame(id));
+    } catch (err) {
+      reportError(err, "update the completion state");
+    }
   }
 
   async function fav() {
-    await api.setFavorite(id, !game!.is_favorite);
-    setGame(await api.getGame(id));
+    try {
+      await api.setFavorite(id, !game!.is_favorite);
+      setGame(await api.getGame(id));
+    } catch (err) {
+      reportError(err, "update your favourites");
+    }
   }
 
   async function saveNotes() {
     setSavingNotes(true);
     try {
       await api.updateNotes(id, notes || null);
+    } catch (err) {
+      reportError(err, "save your notes");
     } finally {
       setSavingNotes(false);
     }
@@ -103,8 +126,10 @@ export function GameDetails() {
     setLaunching(true);
     try {
       await api.launchGame(id);
-    } catch {
-      // Surfaced to the user via the backend's Notice toast.
+    } catch (err) {
+      // The backend emits a Notice for anticipated conditions; anything else
+      // used to disappear here, so Play appeared to do nothing at all.
+      reportError(err, "launch this game");
     } finally {
       setLaunching(false);
     }
@@ -121,52 +146,90 @@ export function GameDetails() {
     ) {
       return;
     }
-    await api.setHidden(id, hidden);
-    if (hidden) {
-      navigate("/library");
-    } else {
-      setGame(await api.getGame(id));
+    try {
+      await api.setHidden(id, hidden);
+      if (hidden) {
+        navigate("/library");
+      } else {
+        setGame(await api.getGame(id));
+      }
+    } catch (err) {
+      reportError(
+        err,
+        hidden ? "remove this game from your library" : "restore this game"
+      );
     }
   }
 
   async function browseExe(installationId: string) {
-    const picked = await open({
-      multiple: false,
-      filters: [
-        { name: "Executables", extensions: ["exe", "bat", "sh", "AppImage"] },
-      ],
-    });
-    if (!picked || Array.isArray(picked)) return;
-    await api.setInstallationExecutable(installationId, picked as string);
-    setGame(await api.getGame(id));
+    try {
+      const picked = await open({
+        multiple: false,
+        filters: [
+          { name: "Executables", extensions: ["exe", "bat", "sh", "AppImage"] },
+        ],
+      });
+      if (!picked || Array.isArray(picked)) return;
+      await api.setInstallationExecutable(installationId, picked as string);
+      setGame(await api.getGame(id));
+    } catch (err) {
+      reportError(err, "set the executable for this installation");
+    }
   }
 
-  async function pickCover() {
-    const picked = await open({ multiple: false, filters: IMG_FILTERS });
-    if (!picked || Array.isArray(picked)) return;
-    const stored = await api.setCoverPath(id, picked as string);
-    setGame((prev) => (prev ? { ...prev, cover_path: stored } : prev));
-  }
+  // One guarded picker for all artwork slots. The three previous copies
+  // differed only by which command they called and which field they wrote,
+  // and none of them reported a failure.
+  const ARTWORK_SLOTS = {
+    cover: { label: "cover art", call: api.setCoverPath, field: "cover_path" },
+    hero: { label: "hero image", call: api.setHeroPath, field: "hero_path" },
+    logo: { label: "logo", call: api.setLogoPath, field: "logo_path" },
+  } as const;
 
-  async function pickHero() {
-    const picked = await open({ multiple: false, filters: IMG_FILTERS });
-    if (!picked || Array.isArray(picked)) return;
-    const stored = await api.setHeroPath(id, picked as string);
-    setGame((prev) => (prev ? { ...prev, hero_path: stored } : prev));
-  }
-
-  async function pickLogo() {
-    const picked = await open({ multiple: false, filters: IMG_FILTERS });
-    if (!picked || Array.isArray(picked)) return;
-    const stored = await api.setLogoPath(id, picked as string);
-    setGame((prev) => (prev ? { ...prev, logo_path: stored } : prev));
+  async function pickArtwork(slot: keyof typeof ARTWORK_SLOTS) {
+    const { label, call, field } = ARTWORK_SLOTS[slot];
+    try {
+      const picked = await open({ multiple: false, filters: IMG_FILTERS });
+      if (!picked || Array.isArray(picked)) return;
+      const stored = await call(id, picked as string);
+      setGame((prev) => (prev ? { ...prev, [field]: stored } : prev));
+    } catch (err) {
+      reportError(err, `set the ${label}`);
+    }
   }
 
   async function refreshMetadata() {
     setRefreshing(true);
     try {
-      await api.refreshMetadata(id);
+      const result = await api.refreshMetadata(id);
       setGame(await api.getGame(id));
+
+      // The result used to be discarded, so the button spun and then nothing
+      // observable happened — identical whether the refresh found new data,
+      // found nothing, or never ran because the feature is disabled.
+      const changed =
+        (result.text_updated ? 1 : 0) + result.artwork_updated;
+      if (changed > 0) {
+        const parts: string[] = [];
+        if (result.text_updated) parts.push("details");
+        if (result.artwork_updated > 0) {
+          parts.push(
+            `${result.artwork_updated} artwork image${
+              result.artwork_updated === 1 ? "" : "s"
+            }`
+          );
+        }
+        notify(`Updated ${parts.join(" and ")}`, "success");
+      } else if (!result.network_allowed) {
+        notify(
+          "Automatic metadata is turned off — enable it in Settings to fetch online artwork and details.",
+          "warning"
+        );
+      } else {
+        notify("No new metadata was found for this game", "info");
+      }
+    } catch (err) {
+      reportError(err, "refresh metadata for this game");
     } finally {
       setRefreshing(false);
     }
@@ -382,7 +445,7 @@ export function GameDetails() {
               alt="Cover"
             />
           </div>
-          <button className="btn btn-sm" onClick={pickCover}>
+          <button className="btn btn-sm" onClick={() => pickArtwork("cover")}>
             <Icon name="image" size={13} />
             {game.cover_path ? "Change cover" : "Set cover"}
           </button>
@@ -397,7 +460,7 @@ export function GameDetails() {
               alt="Hero"
             />
           </div>
-          <button className="btn btn-sm" onClick={pickHero}>
+          <button className="btn btn-sm" onClick={() => pickArtwork("hero")}>
             <Icon name="image" size={13} />
             {game.hero_path ? "Change hero" : "Set hero"}
           </button>
@@ -412,7 +475,7 @@ export function GameDetails() {
               alt="Logo"
             />
           </div>
-          <button className="btn btn-sm" onClick={pickLogo}>
+          <button className="btn btn-sm" onClick={() => pickArtwork("logo")}>
             <Icon name="image" size={13} />
             {game.logo_path ? "Change logo" : "Set logo"}
           </button>

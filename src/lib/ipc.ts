@@ -52,10 +52,11 @@ export const api = {
   setHidden: (id: string, hidden: boolean) =>
     invoke<void>("set_hidden", { id, hidden }),
   refreshMetadata: (gameId: string) =>
-    invoke<{ text_updated: boolean; artwork_updated: number }>(
-      "refresh_metadata",
-      { gameId }
-    ),
+    invoke<{
+      text_updated: boolean;
+      artwork_updated: number;
+      network_allowed: boolean;
+    }>("refresh_metadata", { gameId }),
 
   // scan
   scanNow: () => invoke<ScanReport[]>("scan_paths_now"),

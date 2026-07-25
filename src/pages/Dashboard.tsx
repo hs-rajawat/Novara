@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, onEvent } from "@/lib/ipc";
+import { reportError } from "@/lib/toast";
 import type { DashboardStats, HeatmapCell } from "@/types";
 import { formatPlaytime } from "@/lib/format";
 import { Icon } from "@/components/Icon";
@@ -33,12 +34,16 @@ export function Dashboard() {
   }
 
   useEffect(() => {
-    loadStats().catch(console.error);
+    // This is where issue 3.1 hid: `dashboard_stats` fails outright on an
+    // empty library, and `catch(console.error)` meant the Dashboard just
+    // stayed blank with no indication anything had gone wrong.
+    loadStats().catch((e) => reportError(e, "load your dashboard statistics"));
   }, []);
 
   // Refresh when gameplay or scan events arrive.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
     onEvent((ev) => {
       if (
         ev.type === "scan_finished" ||
@@ -46,12 +51,16 @@ export function Dashboard() {
         ev.type === "game_added" ||
         ev.type === "game_updated"
       ) {
-        loadStats().catch(console.error);
+        loadStats().catch((e) =>
+          reportError(e, "refresh your dashboard statistics")
+        );
       }
     }).then((fn) => {
-      unlisten = fn;
+      if (cancelled) fn();
+      else unlisten = fn;
     });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, []);

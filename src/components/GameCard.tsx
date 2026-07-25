@@ -7,6 +7,7 @@ import { GameArtwork } from "@/components/GameArtwork";
 import { PlatformBadge } from "@/components/PlatformBadge";
 import { Icon } from "@/components/Icon";
 import { api } from "@/lib/ipc";
+import { reportError } from "@/lib/toast";
 import { useLibrary } from "@/stores/library";
 
 interface Props {
@@ -28,8 +29,11 @@ export function GameCard({ game, index = 0 }: Props) {
     setLaunching(true);
     try {
       await api.launchGame(game.id);
-    } catch {
-      // Surfaced to the user via the backend's Notice toast.
+    } catch (err) {
+      // The backend emits a Notice for conditions it anticipates (game
+      // missing, drive offline), but not for unexpected failures — those
+      // used to vanish here, leaving the Play button to silently do nothing.
+      reportError(err, "launch this game");
     } finally {
       setLaunching(false);
     }
@@ -44,8 +48,12 @@ export function GameCard({ game, index = 0 }: Props) {
   async function handleRestore(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    await api.setHidden(game.id, false);
-    load();
+    try {
+      await api.setHidden(game.id, false);
+      await load();
+    } catch (err) {
+      reportError(err, "restore this game to your library");
+    }
   }
 
   return (

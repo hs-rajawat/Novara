@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { onEvent } from "@/lib/ipc";
+import { subscribeToasts } from "@/lib/toast";
 import type { AppEvent } from "@/types";
 import { Icon, type IconName } from "@/components/Icon";
 
@@ -61,16 +62,40 @@ export function ToastContainer() {
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    // Tracked so unmount does not leave timers pointing at a dead setState.
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+
+    const show = (toast: Toast) => {
+      setToasts((prev) => [...prev.slice(-(MAX_VISIBLE - 1)), toast]);
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        dismiss(toast.id);
+      }, DURATION_MS);
+      timers.add(timer);
+    };
+
+    // Backend events.
     onEvent((ev) => {
       const toast = toastFromEvent(ev);
-      if (!toast) return;
-      setToasts((prev) => [...prev.slice(-(MAX_VISIBLE - 1)), toast]);
-      setTimeout(() => dismiss(toast.id), DURATION_MS);
+      if (toast) show(toast);
     }).then((fn) => {
-      unlisten = fn;
+      // The component can unmount before this promise settles; without the
+      // guard the listener would outlive it and never be detached.
+      if (cancelled) fn();
+      else unlisten = fn;
     });
+
+    // Locally raised toasts — errors caught in the frontend.
+    const unsubscribe = subscribeToasts((t) =>
+      show({ id: _nextId++, message: t.message, level: t.level })
+    );
+
     return () => {
+      cancelled = true;
       unlisten?.();
+      unsubscribe();
+      for (const timer of timers) clearTimeout(timer);
     };
   }, [dismiss]);
 

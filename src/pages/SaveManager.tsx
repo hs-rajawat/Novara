@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
 import { api } from "@/lib/ipc";
+import { reportError } from "@/lib/toast";
 import type { DetectedSavePath, SaveBackup, SaveProfile } from "@/types";
 import { formatBytes, formatRelative } from "@/lib/format";
 import { Icon } from "@/components/Icon";
@@ -29,12 +30,15 @@ export function SaveManager() {
   }
 
   useEffect(() => {
-    load();
+    load().catch((e) => reportError(e, "load save profiles"));
   }, [id]);
 
   useEffect(() => {
     if (active) {
-      api.listBackups(active).then(setBackups);
+      api
+        .listBackups(active)
+        .then(setBackups)
+        .catch((e) => reportError(e, "load save backups"));
     } else {
       setBackups([]);
     }

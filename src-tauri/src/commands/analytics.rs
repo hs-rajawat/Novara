@@ -73,9 +73,11 @@ pub async fn dashboard_stats(state: State<'_, Arc<AppState>>) -> AppResult<Dashb
         LIMIT 6
         "#,
     )
+    // Propagated rather than `.unwrap_or_default()`. Swallowing the error
+    // here rendered an empty "Top genres" panel that is indistinguishable
+    // from a library with no genres assigned, and left no trace anywhere.
     .fetch_all(db)
-    .await
-    .unwrap_or_default();
+    .await?;
 
     Ok(DashboardStats {
         total_games,
@@ -111,8 +113,9 @@ pub async fn heatmap(
         "#,
     )
     .bind(cutoff_days)
+    // Propagated rather than `.unwrap_or_default()`: an empty heatmap and a
+    // failed heatmap query looked identical to the user and to the logs.
     .fetch_all(&state.db.pool)
-    .await
-    .unwrap_or_default();
+    .await?;
     Ok(rows)
 }

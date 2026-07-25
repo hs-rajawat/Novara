@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useParams, Link } from "react-router-dom";
 import clsx from "clsx";
 import { api } from "@/lib/ipc";
+import { reportError } from "@/lib/toast";
 import type { Achievement } from "@/types";
 import { Icon } from "@/components/Icon";
 import { EmptyState } from "@/components/EmptyState";
@@ -17,7 +18,7 @@ export function Achievements() {
     setItems(await api.listAchievements(id));
   }
   useEffect(() => {
-    load();
+    load().catch((e) => reportError(e, "load achievements"));
   }, [id]);
 
   async function toggle(a: Achievement) {
@@ -29,23 +30,30 @@ export function Achievements() {
     );
     try {
       await api.toggleAchievement(a.id);
-    } catch {
-      await load();
+    } catch (err) {
+      // Roll the optimistic update back, and say why — previously the row
+      // silently snapped back with no explanation.
+      reportError(err, "update this achievement");
+      await load().catch(() => {});
     }
   }
 
   async function add(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await api.createAchievement({
-      game_id: id,
-      name,
-      description: desc || undefined,
-      category,
-    });
-    setName("");
-    setDesc("");
-    await load();
+    try {
+      await api.createAchievement({
+        game_id: id,
+        name,
+        description: desc || undefined,
+        category,
+      });
+      setName("");
+      setDesc("");
+      await load();
+    } catch (err) {
+      reportError(err, "add this achievement");
+    }
   }
 
   const unlocked = items.filter((a) => a.is_unlocked).length;

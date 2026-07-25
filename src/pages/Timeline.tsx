@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/ipc";
+import { reportError } from "@/lib/toast";
 import type { Game, PlaySession } from "@/types";
 import { formatPlaytime, formatSessionDay, formatSessionTime } from "@/lib/format";
 import { Icon } from "@/components/Icon";
@@ -17,7 +18,7 @@ export function Timeline() {
       ]);
       setSessions(ss);
       setGames(new Map(gs.map((g) => [g.id, g])));
-    })();
+    })().catch((e) => reportError(e, "load your play history"));
   }, []);
 
   // Group sessions by calendar day, preserving backend order (newest first).

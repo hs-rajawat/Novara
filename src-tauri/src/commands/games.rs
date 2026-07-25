@@ -448,6 +448,16 @@ pub async fn set_hidden(
 pub struct RefreshMetadataResult {
     pub text_updated: bool,
     pub artwork_updated: u32,
+    /// Whether network-backed providers were permitted for this refresh
+    /// (`metadata_enabled && !offline_mode`).
+    ///
+    /// Without this the frontend cannot tell "the providers ran and found
+    /// nothing new" from "the feature is switched off and almost nothing
+    /// ran", which are the same empty result but need opposite advice. Note
+    /// it is not simply the inverse of a successful refresh: `steam_local`
+    /// copies from Steam's own on-disk cache and can still succeed with
+    /// network access denied.
+    pub network_allowed: bool,
 }
 
 /// The "Refresh Metadata" button — an explicit, single-game re-fetch.
@@ -468,5 +478,6 @@ pub async fn refresh_metadata(
     Ok(RefreshMetadataResult {
         text_updated,
         artwork_updated,
+        network_allowed: allow_network,
     })
 }

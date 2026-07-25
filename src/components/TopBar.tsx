@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useLibrary } from "@/stores/library";
 import { api } from "@/lib/ipc";
+import { reportError } from "@/lib/toast";
 import { Icon } from "@/components/Icon";
 
 const TITLES: Record<string, string> = {
@@ -53,7 +54,7 @@ export function TopBar() {
       await api.scanNow();
       await load();
     } catch (e) {
-      console.error(e);
+      reportError(e, "scan for games");
     } finally {
       setScanning(false);
     }

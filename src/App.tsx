@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { ToastContainer } from "@/components/ToastContainer";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import { Dashboard } from "@/pages/Dashboard";
 import { Library } from "@/pages/Library";
@@ -17,6 +18,7 @@ import { Settings } from "@/pages/Settings";
 
 import { useLibrary } from "@/stores/library";
 import { onEvent } from "@/lib/ipc";
+import { reportError } from "@/lib/toast";
 
 export default function App() {
   const load = useLibrary((s) => s.load);
@@ -24,8 +26,9 @@ export default function App() {
 
   // Initial library load + subscribe to backend events to refresh.
   useEffect(() => {
-    load();
+    load().catch((e) => reportError(e, "load your library"));
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
     onEvent((ev) => {
       if (
         ev.type === "game_added" ||
@@ -33,12 +36,14 @@ export default function App() {
         ev.type === "session_ended" ||
         ev.type === "achievement_unlocked"
       ) {
-        load();
+        load().catch((e) => reportError(e, "refresh your library"));
       }
     }).then((fn) => {
-      unlisten = fn;
+      if (cancelled) fn();
+      else unlisten = fn;
     });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [load]);
@@ -50,19 +55,23 @@ export default function App() {
         <TopBar />
         {/* Keyed by path so the enter animation replays on navigation. */}
         <div className="content" key={loc.pathname}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/library" element={<Library />} />
-            <Route path="/library/:id" element={<GameDetails />} />
-            <Route path="/library/:id/achievements" element={<Achievements />} />
-            <Route path="/library/:id/saves" element={<SaveManager />} />
-            <Route path="/library/:id/mods" element={<Mods />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/timeline" element={<Timeline />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+          {/* Scoped inside the shell so a page-level crash keeps navigation
+              usable, and reset on route change so moving away recovers. */}
+          <ErrorBoundary resetKey={loc.pathname}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/library" element={<Library />} />
+              <Route path="/library/:id" element={<GameDetails />} />
+              <Route path="/library/:id/achievements" element={<Achievements />} />
+              <Route path="/library/:id/saves" element={<SaveManager />} />
+              <Route path="/library/:id/mods" element={<Mods />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/timeline" element={<Timeline />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </ErrorBoundary>
         </div>
       </div>
       <ToastContainer />
