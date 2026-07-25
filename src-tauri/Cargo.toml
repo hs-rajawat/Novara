@@ -13,7 +13,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.0", features = [] }
+# `protocol-asset` compiles in the `asset:` custom protocol used to render
+# locally stored artwork. Without it, `app.security.assetProtocol` in
+# tauri.conf.json is inert: the protocol handler and its scope are both
+# behind `#[cfg(feature = "protocol-asset")]`, so every image request fails
+# and `GameArtwork` silently falls back to its gradient placeholder.
+tauri = { version = "2.0", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2.0"
 tauri-plugin-fs = "2.0"
 tauri-plugin-os = "2.0"

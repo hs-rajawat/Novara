@@ -100,6 +100,10 @@ pub async fn seed_game(db: &Db, title: &str) -> String {
 }
 
 /// Insert an installation row for `game_id` and return its id.
+///
+/// `source` is a `sources.code` value (`"steam"`, `"epic"`, `"manual"`, …)
+/// which is resolved to the seeded `sources.id`; the column is
+/// `source_id INTEGER`, not a text code.
 pub async fn seed_installation(
     db: &Db,
     game_id: &str,
@@ -111,20 +115,26 @@ pub async fn seed_installation(
 ) -> String {
     let id = uuid::Uuid::new_v4().to_string();
     let now = now_rfc3339();
+    let source_id: i64 = sqlx::query_scalar("SELECT id FROM sources WHERE code = ?1")
+        .bind(source)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap_or_else(|e| panic!("unknown source code {source:?}: {e}"));
     sqlx::query(
         "INSERT INTO game_installations
-           (id, game_id, source_code, source_app_id, install_dir, executable,
-            size_bytes, is_primary, status, detected_at, updated_at)
-         VALUES (?1, ?2, ?3, NULL, ?4, ?5, 0, ?6, ?7, ?8, ?8)",
+           (id, game_id, source_id, install_dir, executable, launch_args,
+            source_app_id, install_size_bytes, is_primary, detected_at,
+            executable_override, status, last_verified_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, 0, ?6, ?7, 0, ?8, NULL)",
     )
     .bind(&id)
     .bind(game_id)
-    .bind(source)
+    .bind(source_id)
     .bind(install_dir)
     .bind(executable)
     .bind(i64::from(is_primary))
-    .bind(status)
     .bind(&now)
+    .bind(status)
     .execute(&db.pool)
     .await
     .expect("seed installation");
@@ -398,6 +408,56 @@ mod harness_tests {
             .await;
             assert!(result.is_err(), "{column} CHECK should reject out-of-set values");
         }
+    }
+
+    /// The seed helpers must match the real schema. This exists because the
+    /// first version of `seed_installation` was written against guessed
+    /// column names (`source_code`, `size_bytes`) that do not exist — a
+    /// mistake that would otherwise have surfaced as a confusing failure in
+    /// the first test that used it.
+    #[tokio::test]
+    async fn seed_helpers_match_the_real_schema() {
+        let db = test_db().await;
+        let game = seed_game(&db, "Dying Light").await;
+        let install = seed_installation(
+            &db,
+            &game,
+            "steam",
+            "D:/Games/Dying Light",
+            Some("D:/Games/Dying Light/DyingLightGame.exe"),
+            true,
+            "installed",
+        )
+        .await;
+        seed_genre(&db, &game, "Action").await;
+
+        let (gid, is_primary, status): (String, i64, String) = sqlx::query_as(
+            "SELECT game_id, is_primary, status FROM game_installations WHERE id = ?1",
+        )
+        .bind(&install)
+        .fetch_one(&db.pool)
+        .await
+        .expect("read back installation");
+        assert_eq!((gid.as_str(), is_primary, status.as_str()), (game.as_str(), 1, "installed"));
+
+        let genres: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM game_genres WHERE game_id = ?1")
+                .bind(&game)
+                .fetch_one(&db.pool)
+                .await
+                .unwrap();
+        assert_eq!(genres, 1, "genre should be linked");
+
+        // Seeding the same genre twice must not violate the composite PK —
+        // this is the shape of the bug that breaks merge_games (Batch 3).
+        seed_genre(&db, &game, "Action").await;
+        let genres_again: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM game_genres WHERE game_id = ?1")
+                .bind(&game)
+                .fetch_one(&db.pool)
+                .await
+                .unwrap();
+        assert_eq!(genres_again, 1, "duplicate genre link should be idempotent");
     }
 
     #[tokio::test]
