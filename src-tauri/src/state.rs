@@ -6,9 +6,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter};
+use tokio::sync::Mutex;
 use tracing::{info, warn};
-
 use crate::db::Db;
 use crate::error::AppResult;
 use crate::events::EventBus;
@@ -29,6 +30,10 @@ pub struct AppState {
     pub metadata: Arc<MetadataService>,
     pub artwork: Arc<ArtworkService>,
     pub app_data_dir: PathBuf,
+    /// Handles for the long-lived background loops (playtime watcher, periodic
+    /// integrity sweep) so shutdown can stop them deliberately instead of
+    /// relying on process exit to tear them down mid-operation.
+    background: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl AppState {
@@ -78,7 +83,7 @@ impl AppState {
 
         // Kick off passive process watcher with a generous poll interval —
         // 5s is enough resolution for playtime tracking and gentle on CPU.
-        playtime.clone().spawn_watcher(Duration::from_secs(5));
+        let watcher = playtime.clone().spawn_watcher(Duration::from_secs(5));
 
         // The integrity service's startup/periodic sweeps are intentionally
         // NOT spawned here — they emit bus events, and doing so before
@@ -95,7 +100,29 @@ impl AppState {
             metadata,
             artwork,
             app_data_dir,
+            background: Mutex::new(vec![watcher]),
         })
+    }
+
+    /// Register a long-lived background task for cancellation at shutdown.
+    pub async fn register_background(&self, handle: JoinHandle<()>) {
+        self.background.lock().await.push(handle);
+    }
+
+    /// Stop every long-lived background loop.
+    ///
+    /// These loops never return on their own — they sleep and poll forever — so
+    /// without this they only stopped because the process died, potentially
+    /// part-way through a filesystem sweep or a database write. Aborting them
+    /// explicitly at shutdown means the remaining shutdown work (closing open
+    /// play sessions) is not racing a sweep that is still mutating rows.
+    pub async fn shutdown_background(&self) -> usize {
+        let handles: Vec<JoinHandle<()>> = self.background.lock().await.drain(..).collect();
+        let count = handles.len();
+        for handle in handles {
+            handle.abort();
+        }
+        count
     }
 
     /// `metadata_enabled && !offline_mode` — the one gate every network

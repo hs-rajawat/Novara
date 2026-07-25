@@ -10,6 +10,21 @@ use crate::error::AppResult;
 use crate::scanner::ScanReport;
 use crate::state::AppState;
 
+/// Scan every configured path, reconcile install health, then hand the
+/// metadata/artwork fill off to a background task.
+///
+/// The fill used to run inline, so "Scan now" stayed in its scanning state
+/// until every provider lookup and artwork download had finished — for a large
+/// library, minutes — in direct contradiction of the project's own constraint
+/// that background work must never block a user action. Since Batch 5 the fill
+/// is also deliberately rate-limited, which made waiting on it worse still.
+///
+/// The integrity sweep stays inline on purpose: it is local filesystem work,
+/// and the install statuses it resolves are part of what makes the returned
+/// reports truthful. Only the network-bound fill is deferred.
+///
+/// Progress reaches the UI the same way it always did, through `GameUpdated`
+/// events as assets land, so nothing is lost by returning early.
 #[tauri::command]
 pub async fn scan_paths_now(state: State<'_, Arc<AppState>>) -> AppResult<Vec<ScanReport>> {
     let paths = list_scan_paths_internal(&state).await?;
@@ -24,22 +39,35 @@ pub async fn scan_paths_now(state: State<'_, Arc<AppState>>) -> AppResult<Vec<Sc
         warn!(error = %e, "post-scan integrity sweep failed");
     }
 
-    // Metadata/artwork fill is opt-in (`metadata_enabled`) and always
-    // respects the `offline_mode` kill-switch — best-effort here too, since
-    // a provider hiccup shouldn't fail the scan the user actually asked for.
-    match state.allow_metadata_network().await {
-        Ok(allow_network) => {
-            if let Err(e) = state.metadata.fill_missing(allow_network).await {
-                warn!(error = %e, "post-scan metadata fill failed");
-            }
-            if let Err(e) = state.artwork.fill_missing(allow_network).await {
-                warn!(error = %e, "post-scan artwork fill failed");
-            }
-        }
-        Err(e) => warn!(error = %e, "failed to read metadata settings; skipping post-scan fill"),
-    }
+    spawn_post_scan_fill(Arc::clone(&state));
 
     Ok(reports)
+}
+
+/// Run the metadata and artwork fill in the background.
+///
+/// `tauri::async_runtime::spawn` rather than `tokio::spawn` for the same reason
+/// the integrity sweeps use it: it attaches to the runtime Tauri actually owns.
+/// Every failure is logged and swallowed — this task exists to enrich a library
+/// the user can already use, so it must never surface as a failed scan.
+fn spawn_post_scan_fill(state: Arc<AppState>) {
+    tauri::async_runtime::spawn(async move {
+        // Metadata/artwork fill is opt-in (`metadata_enabled`) and always
+        // respects the `offline_mode` kill-switch.
+        let allow_network = match state.allow_metadata_network().await {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "failed to read metadata settings; skipping post-scan fill");
+                return;
+            }
+        };
+        if let Err(e) = state.metadata.fill_missing(allow_network).await {
+            warn!(error = %e, "post-scan metadata fill failed");
+        }
+        if let Err(e) = state.artwork.fill_missing(allow_network).await {
+            warn!(error = %e, "post-scan artwork fill failed");
+        }
+    });
 }
 
 #[tauri::command]

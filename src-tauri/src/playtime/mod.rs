@@ -34,7 +34,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
+use tauri::async_runtime::JoinHandle;
 use tracing::warn;
 
 use crate::db::Db;
@@ -177,8 +177,12 @@ impl PlaytimeTracker {
 
     /// Spawn the passive process watcher. Polls every `interval`, matching
     /// running processes to installations by executable path, and starting or
-    /// stopping sessions accordingly. Returns a `JoinHandle` so the caller can
-    /// cancel on shutdown.
+    /// stopping sessions accordingly. Returns a handle so the caller can
+    /// cancel it at shutdown.
+    ///
+    /// Spawned on Tauri's runtime rather than with `tokio::spawn`, matching the
+    /// integrity sweeps and the project's rule that background work attaches to
+    /// the runtime Tauri owns.
     ///
     /// Matching is by **full executable path**, in three tiers:
     ///   1. exact match against an installation's recorded executable — the
@@ -194,7 +198,7 @@ impl PlaytimeTracker {
     ///      watched installations, so two different games shipping `game.exe`
     ///      are never confused for one another.
     pub fn spawn_watcher(self: Arc<Self>, interval: Duration) -> JoinHandle<()> {
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             use sysinfo::System;
             let mut sys = System::new();
             loop {

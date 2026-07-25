@@ -6,6 +6,24 @@
 //! rather than re-deriving it, but still skips kinds it already believes are
 //! `ready` so a settled library doesn't re-download or re-HEAD assets every
 //! sweep.
+//!
+//! # Invariant: terminal states apply only to *eligible* games
+//!
+//! Every artwork slot of a game the fill actually visits ends up terminal —
+//! `ready` if a provider supplied it, `skipped` if a conclusive pass found that
+//! none can. That is what lets a settled library stop calling providers.
+//!
+//! **This does not extend to the whole table.** `fill_missing` iterates
+//! `list_games(false)`, so a hidden game — one the user removed from their
+//! library — is never visited and its rows stay `pending` indefinitely. Those
+//! rows are not unfinished work: a hidden game is skipped before any provider is
+//! consulted, so they cost nothing, and un-hiding the game makes it eligible
+//! again on the next sweep.
+//!
+//! Do not write code that assumes "every row in `artwork_assets` eventually
+//! becomes `ready` or `skipped`", or that treats a non-terminal row as a signal
+//! that the pipeline still has work pending. Scope any such query to
+//! `games.is_hidden = 0`.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -90,7 +108,7 @@ impl ArtworkService {
     /// re-ran the entire provider chain on every scan — three CDN HEAD requests
     /// per Steam game, indefinitely.
     pub async fn fill_missing(&self, allow_network: bool) -> AppResult<FillReport> {
-        let providers = self.build_providers();
+        let providers = self.build_providers().await;
 
         // Hidden games are excluded: the user removed them from the library, so
         // fetching artwork for them is work nobody asked for.
@@ -120,6 +138,7 @@ impl ArtworkService {
                 )
                 .await?;
             updated += outcome.filled;
+            self.announce(&game.id, outcome.filled);
 
             // Only settle a slot as terminally unavailable when this pass
             // actually got a definitive answer from every provider. If any
@@ -157,7 +176,7 @@ impl ArtworkService {
             .get_game(game_id)
             .await?
             .ok_or_else(|| crate::error::AppError::NotFound(format!("game not found: {game_id}")))?;
-        let providers = self.build_providers();
+        let providers = self.build_providers().await;
         let all: HashSet<ArtworkKind> = ArtworkKind::ALL.into_iter().collect();
         let outcome = self
             .resolve_one(
@@ -169,21 +188,36 @@ impl ArtworkService {
                 &mut HashMap::new(),
             )
             .await?;
+        self.announce(game_id, outcome.filled);
         Ok(outcome.filled)
     }
 
     /// Registry construction is shared between `fill_missing` and
     /// `refresh_game` but deliberately not cached on `self` — Steam library
     /// discovery must happen fresh each call (see struct docs).
-    fn build_providers(&self) -> Vec<Arc<dyn ArtworkProvider>> {
+    ///
+    /// Discovery parses `libraryfolders.vdf` and stats directories, so it runs
+    /// on the blocking pool rather than stalling a tokio worker on every fill.
+    async fn build_providers(&self) -> Vec<Arc<dyn ArtworkProvider>> {
         #[cfg(test)]
         if let Some(providers) = &self.test_providers {
             let mut providers = providers.clone();
             providers.sort_by_key(|p| p.priority());
             return providers;
         }
+        let steam_ctx = match tauri::async_runtime::spawn_blocking(SteamContext::discover).await {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                // Discovery itself cannot fail, so this only happens if the
+                // blocking task was cancelled. Falling back to a fresh inline
+                // discovery keeps the fill working rather than silently losing
+                // the local (zero-network) provider.
+                warn!(error = %e, "steam discovery task failed; discovering inline");
+                SteamContext::discover()
+            }
+        };
         let mut providers: Vec<Arc<dyn ArtworkProvider>> = vec![
-            Arc::new(SteamLocalProvider::new(SteamContext::discover())),
+            Arc::new(SteamLocalProvider::new(steam_ctx)),
             Arc::new(SteamCdnProvider::new(
                 self.client.clone(),
                 self.throttle.clone(),
@@ -302,9 +336,16 @@ impl ArtworkService {
                                     self.set_game_path(&game.id, descriptor.kind, &asset.path)
                                         .await?;
                                     missing.remove(&descriptor.kind);
-                                    self.bus.emit(AppEvent::GameUpdated {
-                                        game_id: game.id.clone(),
-                                    });
+                                    // Deliberately not emitted per asset. Each
+                                    // `GameUpdated` costs the frontend a full
+                                    // `list_games` (and the Dashboard a
+                                    // `dashboard_stats` + `heatmap`), so a
+                                    // first fill of a large library emitted
+                                    // roughly three events per game and
+                                    // overran the bus's 256-slot capacity,
+                                    // making the forwarder lag and drop. One
+                                    // event per game is emitted after the
+                                    // whole game is resolved.
                                     updated += 1;
                                 } else {
                                     // The ownership guard refused the write:
@@ -364,6 +405,16 @@ impl ArtworkService {
         })
     }
 
+    /// Announce that a game's artwork changed — once per game, not once per
+    /// asset. See the note in `resolve_one` for why.
+    fn announce(&self, game_id: &str, filled: u32) {
+        if filled > 0 {
+            self.bus.emit(AppEvent::GameUpdated {
+                game_id: game_id.to_string(),
+            });
+        }
+    }
+
     async fn set_game_path(&self, game_id: &str, kind: ArtworkKind, path: &str) -> AppResult<()> {
         match kind {
             ArtworkKind::Cover => self.db.set_cover_path(game_id, path).await,
@@ -383,6 +434,10 @@ fn kind_from_str(s: &str) -> Option<ArtworkKind> {
 /// A slot drops out when it has reached a terminal state (`ready` or
 /// `skipped`) or is still inside its retry backoff. Kinds with no row at all
 /// are eligible, which is how a newly scanned game gets filled.
+///
+/// Only ever called for games the fill visits, i.e. non-hidden ones — see the
+/// invariant in the module docs before assuming anything about rows belonging to
+/// hidden games.
 pub(crate) fn eligible_kinds(
     existing: &[crate::models::ArtworkAsset],
     now: chrono::DateTime<chrono::Utc>,

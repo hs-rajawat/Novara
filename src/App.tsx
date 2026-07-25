@@ -18,6 +18,7 @@ import { Settings } from "@/pages/Settings";
 
 import { useLibrary } from "@/stores/library";
 import { onEvent } from "@/lib/ipc";
+import { debounce, REFRESH_DEBOUNCE_MS } from "@/lib/debounce";
 import { reportError } from "@/lib/toast";
 
 export default function App() {
@@ -29,6 +30,13 @@ export default function App() {
     load().catch((e) => reportError(e, "load your library"));
     let unlisten: (() => void) | null = null;
     let cancelled = false;
+
+    // A background artwork fill emits one event per game, so without this each
+    // one would cost a full `list_games` round trip.
+    const refresh = debounce(() => {
+      load().catch((e) => reportError(e, "refresh your library"));
+    }, REFRESH_DEBOUNCE_MS);
+
     onEvent((ev) => {
       if (
         ev.type === "game_added" ||
@@ -36,7 +44,7 @@ export default function App() {
         ev.type === "session_ended" ||
         ev.type === "achievement_unlocked"
       ) {
-        load().catch((e) => reportError(e, "refresh your library"));
+        refresh();
       }
     }).then((fn) => {
       if (cancelled) fn();
@@ -44,6 +52,7 @@ export default function App() {
     });
     return () => {
       cancelled = true;
+      refresh.cancel();
       unlisten?.();
     };
   }, [load]);

@@ -373,6 +373,21 @@ impl Db {
         })
     }
 
+    /// The size already recorded for an installation at `install_dir`, if any.
+    ///
+    /// Used to avoid re-measuring a folder the scanner has seen before —
+    /// walking every file of every game on every scan was the single most
+    /// expensive operation in a scan pass.
+    pub async fn known_install_size(&self, install_dir: &str) -> AppResult<Option<i64>> {
+        Ok(sqlx::query_scalar(
+            "SELECT install_size_bytes FROM game_installations WHERE install_dir = ?1",
+        )
+        .bind(install_dir)
+        .fetch_optional(&self.pool)
+        .await?
+        .flatten())
+    }
+
     pub async fn list_games(&self, include_hidden: bool) -> AppResult<Vec<Game>> {
         let rows = if include_hidden {
             sqlx::query_as::<_, Game>(

@@ -117,10 +117,20 @@ pub async fn store_remote_asset(
 
     let dest = clean_and_dest(&dest_dir, kind, &ext);
     let tmp = dest_dir.join(format!("{}.{}.tmp", kind.as_str(), std::process::id()));
-    std::fs::write(&tmp, &bytes)
-        .map_err(|e| AppError::Other(format!("write artwork temp: {e}")))?;
-    std::fs::rename(&tmp, &dest)
-        .map_err(|e| AppError::Other(format!("finalize artwork: {e}")))?;
+    // Writing and renaming are blocking filesystem calls on data that can be
+    // several megabytes, so they run on the blocking pool rather than stalling a
+    // tokio worker mid-download-loop.
+    let write_dest = dest.clone();
+    let write_tmp = tmp.clone();
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<()> {
+        std::fs::write(&write_tmp, &bytes)
+            .map_err(|e| AppError::Other(format!("write artwork temp: {e}")))?;
+        std::fs::rename(&write_tmp, &write_dest)
+            .map_err(|e| AppError::Other(format!("finalize artwork: {e}")))?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("artwork write task failed: {e}")))??;
     Ok(StoredAsset {
         path: dest.display().to_string(),
         etag,
@@ -142,8 +152,19 @@ pub async fn store_asset(
 ) -> AppResult<StoredAsset> {
     match source {
         AssetSource::LocalFile(src) => {
-            // No network, so no throttling and no validators to speak of.
-            store_local_asset(app_data_dir, game_id, kind, src).map(|path| StoredAsset {
+            // No network, so no throttling and no validators to speak of — but
+            // a file copy is still blocking I/O on potentially megabytes.
+            let (dir, id, src) = (
+                app_data_dir.to_path_buf(),
+                game_id.to_string(),
+                src.clone(),
+            );
+            let path = tauri::async_runtime::spawn_blocking(move || {
+                store_local_asset(&dir, &id, kind, &src)
+            })
+            .await
+            .map_err(|e| AppError::Other(format!("artwork copy task failed: {e}")))??;
+            Ok(StoredAsset {
                 path,
                 etag: None,
                 last_modified: None,

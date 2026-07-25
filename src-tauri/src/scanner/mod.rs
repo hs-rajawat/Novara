@@ -60,6 +60,28 @@ pub struct ScanReport {
     pub added: u32,
 }
 
+/// Total size of every file under `dir`, in bytes.
+///
+/// Blocking and unbounded in depth by design — an installation's size is the
+/// whole tree — so callers must keep it off the async runtime. Errors on
+/// individual entries are skipped rather than failing the whole measurement: a
+/// permission-denied subfolder should yield a slightly low figure, not no
+/// figure.
+pub(crate) fn dir_size(dir: &std::path::Path) -> Option<i64> {
+    if !dir.is_dir() {
+        return None;
+    }
+    let mut total: i64 = 0;
+    for entry in walkdir::WalkDir::new(dir).into_iter().flatten() {
+        if entry.file_type().is_file() {
+            if let Ok(meta) = entry.metadata() {
+                total = total.saturating_add(meta.len() as i64);
+            }
+        }
+    }
+    Some(total)
+}
+
 impl ScannerOrchestrator {
     pub fn new(db: Db, bus: EventBus) -> Self {
         let scanners: Vec<Box<dyn Scanner>> = vec![
@@ -74,6 +96,43 @@ impl ScannerOrchestrator {
             db,
             bus,
             scanners: Arc::new(scanners),
+        }
+    }
+
+    /// Decide what to record as an installation's size.
+    ///
+    /// A scanner that already knows the size from launcher metadata (Steam's
+    /// manifest, Epic's `.item`) wins outright — that costs nothing. Otherwise
+    /// the size is measured by walking the folder, which is expensive enough
+    /// that it is only done for an installation whose size is not already
+    /// recorded. Rescanning a library therefore performs no measurement at all.
+    ///
+    /// The walk runs on the blocking pool: it is unbounded filesystem I/O and
+    /// would otherwise stall a tokio worker for seconds per game.
+    async fn resolve_install_size(
+        &self,
+        install_dir: &str,
+        from_scanner: Option<i64>,
+    ) -> Option<i64> {
+        if from_scanner.is_some() {
+            return from_scanner;
+        }
+        match self.db.known_install_size(install_dir).await {
+            Ok(Some(known)) => return Some(known),
+            Ok(None) => {}
+            Err(e) => {
+                // Fall through to measuring; a read failure is not a reason to
+                // record no size at all.
+                tracing::warn!(error = %e, install_dir, "failed to read known install size");
+            }
+        }
+        let dir = PathBuf::from(install_dir);
+        match tauri::async_runtime::spawn_blocking(move || dir_size(&dir)).await {
+            Ok(size) => size,
+            Err(e) => {
+                tracing::warn!(error = %e, install_dir, "install size measurement failed");
+                None
+            }
         }
     }
 
@@ -112,6 +171,9 @@ impl ScannerOrchestrator {
                             .executable
                             .as_ref()
                             .map(|p| p.to_string_lossy().into_owned());
+                        let size = self
+                            .resolve_install_size(&install_dir, g.install_size_bytes)
+                            .await;
                         match self
                             .db
                             .upsert_game(UpsertGame {
@@ -120,7 +182,7 @@ impl ScannerOrchestrator {
                                 source_app_id: g.source_app_id.as_deref(),
                                 install_dir: install_dir.as_str(),
                                 executable: exe_str.as_deref(),
-                                install_size_bytes: g.install_size_bytes,
+                                install_size_bytes: size,
                                 executable_override: false,
                                 install_state_hint: g.install_state_hint,
                             })

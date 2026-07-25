@@ -42,6 +42,20 @@ fn etag(v: &str) -> Validators<'_> {
     }
 }
 
+/// A slot in the `pending` state, as a scan leaves it before any provider runs.
+async fn seed_artwork_pending(db: &crate::db::Db, game_id: &str, kind: &str) {
+    sqlx::query(
+        "INSERT INTO artwork_assets (game_id, kind, source, state, updated_at) \
+         VALUES (?1, ?2, 'none', 'pending', ?3)",
+    )
+    .bind(game_id)
+    .bind(kind)
+    .bind(NOW)
+    .execute(&db.pool)
+    .await
+    .expect("seed pending artwork");
+}
+
 // ── eligibility and backoff ─────────────────────────────────────────────
 
 /// The heart of the never-terminating loop: `ready` was the only terminal
@@ -356,6 +370,81 @@ fn service(
     (svc, app_data)
 }
 
+/// Like [`service`], but returns a subscriber so emitted events can be counted.
+fn service_with_bus(
+    db: &crate::db::Db,
+    providers: Vec<Arc<dyn ArtworkProvider>>,
+) -> (ArtworkService, TempDir, tokio::sync::broadcast::Receiver<crate::events::AppEvent>) {
+    let app_data = TempDir::new("appdata");
+    let bus = EventBus::new(256);
+    let rx = bus.subscribe();
+    let svc = ArtworkService::with_providers(
+        db.clone(),
+        bus,
+        app_data.path().to_path_buf(),
+        providers,
+    );
+    (svc, app_data, rx)
+}
+
+/// Filling several artwork kinds for one game must announce once, not once per
+/// asset.
+///
+/// Each `GameUpdated` costs the frontend a full `list_games` — and the Dashboard
+/// a `dashboard_stats` plus a `heatmap` — so emitting per asset meant roughly
+/// three events per game during a fill. Across a large library that overran the
+/// bus's 256-slot capacity, at which point the forwarder lagged and dropped
+/// events, so the UI could also end up *missing* updates.
+#[tokio::test]
+async fn a_fill_announces_once_per_game_not_once_per_asset() {
+    let db = test_db().await;
+    seed_game(&db, "Coalesced").await;
+
+    let (_fixture, descriptors) =
+        temp_assets(&[ArtworkKind::Cover, ArtworkKind::Hero, ArtworkKind::Logo]);
+    let provider = Arc::new(FakeArtworkProvider::new("fake", 0, Lookup::Found(descriptors)));
+    let (svc, _app_data, mut rx) = service_with_bus(&db, vec![provider]);
+
+    let report = svc.fill_missing(true).await.unwrap();
+    assert_eq!(report.updated, 3, "three kinds were filled");
+
+    let mut game_updated = 0;
+    while let Ok(ev) = rx.try_recv() {
+        if matches!(ev, crate::events::AppEvent::GameUpdated { .. }) {
+            game_updated += 1;
+        }
+    }
+    assert_eq!(
+        game_updated, 1,
+        "three assets for one game must produce a single GameUpdated"
+    );
+}
+
+/// A game whose slots all settle without any artwork being written must not
+/// announce at all — an event with nothing to show costs the frontend a full
+/// reload for no reason.
+#[tokio::test]
+async fn a_game_with_nothing_filled_announces_nothing() {
+    let db = test_db().await;
+    seed_game(&db, "Nothing To Say").await;
+
+    let provider = Arc::new(FakeArtworkProvider::new(
+        "fake",
+        0,
+        Lookup::Permanent(PermanentReason::NotFound),
+    ));
+    let (svc, _app_data, mut rx) = service_with_bus(&db, vec![provider]);
+    svc.fill_missing(true).await.unwrap();
+
+    let mut game_updated = 0;
+    while let Ok(ev) = rx.try_recv() {
+        if matches!(ev, crate::events::AppEvent::GameUpdated { .. }) {
+            game_updated += 1;
+        }
+    }
+    assert_eq!(game_updated, 0);
+}
+
 /// The requirement in full: once every slot has reached a terminal state, a
 /// further scan must not consult providers at all.
 #[tokio::test]
@@ -498,10 +587,17 @@ async fn a_permanent_miss_settles_slots_without_recording_false_failures() {
 
 /// Hidden games were still being fetched for, despite the user having removed
 /// them from the library.
+///
+/// Also pins the invariant documented in the module docs: a hidden game's slots
+/// stay non-terminal, and that is not unfinished work. Any future code that
+/// treats a non-terminal row as "the pipeline still has work to do" would be
+/// wrong, so the expectation is asserted here rather than only described.
 #[tokio::test]
 async fn hidden_games_are_not_fetched_for() {
     let db = test_db().await;
     let hidden = seed_game(&db, "Removed").await;
+    // Give it a slot in a non-terminal state, as a real scan would have.
+    seed_artwork_pending(&db, &hidden, "cover").await;
     sqlx::query("UPDATE games SET is_hidden = 1 WHERE id = ?1")
         .bind(&hidden)
         .execute(&db.pool)
@@ -515,6 +611,34 @@ async fn hidden_games_are_not_fetched_for() {
     let report = svc.fill_missing(true).await.unwrap();
     assert_eq!(report.checked, 0);
     assert_eq!(calls.count(), 0, "a hidden game must not cost a provider call");
+
+    let state: String = sqlx::query_scalar(
+        "SELECT state FROM artwork_assets WHERE game_id = ?1 AND kind = 'cover'",
+    )
+    .bind(&hidden)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        state, "pending",
+        "a hidden game's slot stays non-terminal by design, not because work is outstanding"
+    );
+
+    // Un-hiding it must make it eligible again.
+    sqlx::query("UPDATE games SET is_hidden = 0 WHERE id = ?1")
+        .bind(&hidden)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+    let (svc2, _d) = service(
+        &db,
+        vec![Arc::new(FakeArtworkProvider::new("fake", 0, Lookup::Found(vec![])))],
+    );
+    assert_eq!(
+        svc2.fill_missing(true).await.unwrap().checked,
+        1,
+        "restoring a game to the library makes its slots eligible again"
+    );
 }
 
 /// The first pass must actually place the bytes and point the render column at

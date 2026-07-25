@@ -78,10 +78,18 @@ pub fn run() {
             // GameUpdated/Notice they emit is dropped before anything is
             // listening.
             state.integrity.clone().spawn_startup_check();
-            state
+            let periodic = state
                 .integrity
                 .clone()
                 .spawn_periodic_check(std::time::Duration::from_secs(300));
+            // Registered so shutdown can stop the loop deliberately rather than
+            // leaving it to die with the process mid-sweep.
+            {
+                let state = state.clone();
+                tauri::async_runtime::spawn(async move {
+                    state.register_background(periodic).await;
+                });
+            }
 
             app.manage(state);
             Ok(())
@@ -143,12 +151,23 @@ pub fn run() {
             // briefly on shutdown is preferable to losing the session.
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 if let Some(state) = handle.try_state::<Arc<state::AppState>>() {
-                    let playtime = state.playtime.clone();
-                    match tauri::async_runtime::block_on(playtime.stop_all()) {
-                        Ok(0) => {}
-                        Ok(n) => tracing::info!(closed = n, "closed open play sessions on exit"),
-                        Err(e) => tracing::warn!(error = %e, "failed to close sessions on exit"),
-                    }
+                    let state = state.inner().clone();
+                    tauri::async_runtime::block_on(async move {
+                        // Stop the polling loops first, so closing sessions is
+                        // not racing a watcher tick that could reopen one or a
+                        // sweep still mutating installation rows.
+                        let stopped = state.shutdown_background().await;
+                        if stopped > 0 {
+                            tracing::info!(stopped, "stopped background tasks on exit");
+                        }
+                        match state.playtime.stop_all().await {
+                            Ok(0) => {}
+                            Ok(n) => tracing::info!(closed = n, "closed open play sessions on exit"),
+                            Err(e) => {
+                                tracing::warn!(error = %e, "failed to close sessions on exit")
+                            }
+                        }
+                    });
                 }
             }
         });

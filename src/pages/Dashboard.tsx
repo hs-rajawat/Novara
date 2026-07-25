@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, onEvent } from "@/lib/ipc";
+import { debounce, REFRESH_DEBOUNCE_MS } from "@/lib/debounce";
 import { reportError } from "@/lib/toast";
 import type { DashboardStats, HeatmapCell } from "@/types";
 import { formatPlaytime } from "@/lib/format";
@@ -44,6 +45,15 @@ export function Dashboard() {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     let cancelled = false;
+
+    // Each refresh is two queries (`dashboard_stats` and `heatmap`), so an
+    // event burst from a background fill is worth coalescing.
+    const refresh = debounce(() => {
+      loadStats().catch((e) =>
+        reportError(e, "refresh your dashboard statistics")
+      );
+    }, REFRESH_DEBOUNCE_MS);
+
     onEvent((ev) => {
       if (
         ev.type === "scan_finished" ||
@@ -51,9 +61,7 @@ export function Dashboard() {
         ev.type === "game_added" ||
         ev.type === "game_updated"
       ) {
-        loadStats().catch((e) =>
-          reportError(e, "refresh your dashboard statistics")
-        );
+        refresh();
       }
     }).then((fn) => {
       if (cancelled) fn();
@@ -61,6 +69,7 @@ export function Dashboard() {
     });
     return () => {
       cancelled = true;
+      refresh.cancel();
       unlisten?.();
     };
   }, []);

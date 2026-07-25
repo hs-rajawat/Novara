@@ -35,29 +35,54 @@ impl IntegrityService {
     /// Steam library discovery happens exactly once here, up front, and is
     /// reused for every Steam-sourced row — not rediscovered per row — so
     /// this stays cheap at 500-1000+ game libraries.
+    ///
+    /// All of that filesystem work happens on the blocking pool, in a single
+    /// batch, before any database work begins. Launcher discovery and
+    /// per-installation status resolution are both synchronous disk I/O, and
+    /// running them inline stalled a tokio worker for the whole sweep — which
+    /// at a large library, on a spinning disk or across an offline network
+    /// volume, is seconds.
     pub async fn verify_all(&self) -> AppResult<VerifyReport> {
         let rows = self.db.list_installation_paths().await?;
-        let steam_ctx = SteamContext::discover();
-        let epic_ctx = EpicContext::discover();
+
+        // Resolve every auto-managed row's status off the async runtime, then
+        // return the rows alongside their resolutions.
+        let resolved_rows = tauri::async_runtime::spawn_blocking(move || {
+            let steam_ctx = SteamContext::discover();
+            let epic_ctx = EpicContext::discover();
+            rows.into_iter()
+                .map(|row| {
+                    // Non-auto-managed rows are deliberately not resolved: a
+                    // user-asserted state must survive the sweep, so checking
+                    // the disk for it would be wasted I/O.
+                    let resolution = is_auto_managed(&row.status).then(|| {
+                        resolve_installation_status(
+                            &row.source_code,
+                            row.source_app_id.as_deref(),
+                            &row.install_dir,
+                            row.executable.as_deref(),
+                            Some(&steam_ctx),
+                            Some(&epic_ctx),
+                        )
+                    });
+                    (row, resolution)
+                })
+                .collect::<Vec<_>>()
+        })
+        .await
+        .map_err(|e| crate::error::AppError::Other(format!("integrity sweep task failed: {e}")))?;
+
         let mut checked = 0u32;
         let mut changed = 0u32;
         let mut newly_missing = 0u32;
         let mut newly_deleted = 0u32;
         let mut relinked = 0u32;
 
-        for row in rows {
+        for (row, resolution) in resolved_rows {
             checked += 1;
-            if !is_auto_managed(&row.status) {
+            let Some(resolution) = resolution else {
                 continue;
-            }
-            let resolution = resolve_installation_status(
-                &row.source_code,
-                row.source_app_id.as_deref(),
-                &row.install_dir,
-                row.executable.as_deref(),
-                Some(&steam_ctx),
-                Some(&epic_ctx),
-            );
+            };
 
             // A launcher reported the app installed at a new directory — the
             // game moved. Relink the existing row in place (all history

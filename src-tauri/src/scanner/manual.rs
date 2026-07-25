@@ -52,14 +52,21 @@ fn scan_root(root: &Path, out: &mut Vec<DetectedGame>) {
                 .and_then(|n| n.to_str())
                 .unwrap_or("Unknown")
                 .to_string();
-            let size = dir_size(&path).ok();
             out.push(DetectedGame {
                 source_code: "manual".into(),
                 title,
                 install_dir: path.clone(),
                 executable: Some(exe.strip_prefix(&path).unwrap_or(&exe).to_path_buf()),
                 source_app_id: None,
-                install_size_bytes: size,
+                // Deliberately not computed here. Measuring a folder means an
+                // unbounded recursive walk of every file in it, and this ran
+                // for every game on every scan — by far the most expensive
+                // operation in a scan pass, for a cosmetic figure that almost
+                // never changes. `ScannerOrchestrator` fills it in only for
+                // installations whose size it does not already know, because
+                // that decision needs the database and a scanner is a pure
+                // filesystem leaf with no access to it.
+                install_size_bytes: None,
                 install_state_hint: None,
             });
         }
@@ -99,16 +106,4 @@ fn find_executable(dir: &Path) -> Option<PathBuf> {
         }
     }
     named_match.or_else(|| best.map(|(p, _)| p))
-}
-
-fn dir_size(dir: &Path) -> std::io::Result<i64> {
-    let mut total: i64 = 0;
-    for entry in WalkDir::new(dir).into_iter().flatten() {
-        if entry.file_type().is_file() {
-            if let Ok(meta) = entry.metadata() {
-                total = total.saturating_add(meta.len() as i64);
-            }
-        }
-    }
-    Ok(total)
 }
