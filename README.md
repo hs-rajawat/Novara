@@ -12,25 +12,49 @@
 
 ---
 
-## ✨ Overview
+## ✨ Why NOVARA?
 
-NOVARA is a desktop application that helps you organize and launch your games from a single place.
+Most launchers only care about games you bought through them.
 
-Instead of juggling multiple launchers, NOVARA gives you one clean interface to manage your library while keeping everything stored locally.
+NOVARA is different.
+
+Whether your games come from Steam, Epic Games, or are manually installed, NOVARA lets you organise them in one clean library.
+
+No accounts required.
+No cloud dependency.
+Just your games.
 
 ---
 
-## 🚀 Features
+### 🎮 Universal Game Library
 
-- 🎮 Unified game library
-- 🔍 Automatic game detection
-- 🚀 One-click game launching
+Manage games from multiple sources in one place.
+
+- Steam
+- Epic Games
+- Manually installed games
+- More launchers planned
+
+---
+
+### 📂 First-Class Support for Manual Games
+
+Unlike most launchers, NOVARA treats manually installed games as first-class citizens.
+
+You still get:
+
+- 🎮 Library integration
 - 📊 Playtime tracking
-- 💾 Save management
-- 🛡 Installation integrity checks
+- 🏆 Achievement progress
+- 📈 Game progress
+- 🎨 Artwork & metadata
+- 🚀 One-click launching
 - 🎨 Modern desktop interface
 - 🔒 Local-first design
 - ⚡ Fast native performance
+
+
+No launcher required.
 
 ---
 
