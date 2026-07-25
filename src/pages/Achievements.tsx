@@ -155,9 +155,14 @@ export function Achievements() {
                 className="btn btn-ghost icon-btn"
                 style={{ width: 30, height: 30, flexBasis: 30 }}
                 title="Delete achievement"
+                aria-label={`Delete achievement "${a.name}"`}
                 onClick={async () => {
-                  await api.deleteAchievement(a.id);
-                  await load();
+                  try {
+                    await api.deleteAchievement(a.id);
+                    await load();
+                  } catch (e) {
+                    reportError(e, "delete this achievement");
+                  }
                 }}
               >
                 <Icon name="trash" size={14} />

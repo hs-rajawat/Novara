@@ -872,6 +872,28 @@ a.list-row {
   /* Large libraries: skip layout/paint for cards scrolled out of view. */
   content-visibility: auto;
   contain-intrinsic-size: auto 260px;
+  /* Positioning context for the overlay navigation link below. */
+  position: relative;
+}
+
+/* The card-wide navigation link.
+
+   A sibling overlay rather than a wrapper, because a <button> inside an <a> is
+   invalid HTML and browsers disagree about how it behaves for pointer, keyboard
+   and assistive technology. Covering the card keeps the whole surface clickable
+   while the quick-action buttons sit above it. */
+.game-card-link {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  /* Text content is provided by aria-label; nothing should render here. */
+  font-size: 0;
+}
+
+.game-card-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .game-card:hover {
@@ -913,6 +935,9 @@ a.list-row {
 .quick-actions {
   position: absolute;
   inset: 0;
+  /* Above .game-card-link so the buttons receive the click rather than the
+     card-wide navigation overlay. */
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1068,7 +1093,11 @@ a.list-row {
 }
 
 .skeleton-cover {
-  aspect-ratio: 3 / 4;
+  /* Must match the real cover ratio exactly. It was 3 / 4 while covers are
+     2 / 3, so every library load shifted the layout as skeletons were replaced —
+     against DESIGN.md §6.1.3 (spatial stability) and §28 (never break 2:3).
+     Referencing the token means the two cannot drift apart again. */
+  aspect-ratio: var(--cover-ratio);
 }
 
 .skeleton-line {
@@ -1226,6 +1255,22 @@ a.list-row {
   background: var(--danger-soft);
   color: var(--danger);
   border-color: rgba(248, 113, 113, 0.3);
+  text-transform: none;
+}
+
+/* Same semantics as the .save-badge states in the Installations list: deleted
+   is a real problem, offline is an unplugged drive and must not alarm. */
+.chip-deleted {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.3);
+  text-transform: none;
+}
+
+.chip-offline {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-secondary);
+  border-color: rgba(148, 163, 184, 0.3);
   text-transform: none;
 }
 
@@ -1512,9 +1557,13 @@ a.list-row {
 /* ═══════════ Recently played (Dashboard) ═══════════ */
 
 .recent-thumb {
+  /* 42 x 63 is 2:3. This was 42 x 56 (3:4), which cropped every cover in the
+     Dashboard's recently-played list — DESIGN.md §28 requires cover artwork to
+     keep its 2:3 ratio wherever it appears. */
   width: 42px;
-  height: 56px;
+  height: 63px;
   flex: 0 0 42px;
+  aspect-ratio: var(--cover-ratio);
   border-radius: 6px;
   overflow: hidden;
   display: grid;
@@ -1851,3 +1900,141 @@ a.list-row {
 .row.spread { justify-content: space-between; }
 .muted { color: var(--text-secondary); }
 .small { font-size: 12px; }
+
+
+/* ────────────────────────────────────────────────────────────────────
+   Modal overlay (DESIGN.md §22)
+
+   Destructive confirmations used window.confirm(), which §28 forbids: an OS
+   dialog in the middle of a dark, custom interface, with no focus trap and no
+   way to label the action being confirmed.
+   ──────────────────────────────────────────────────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(6, 9, 18, 0.62);
+  backdrop-filter: blur(3px);
+  animation: modal-fade var(--dur-fast, 140ms) ease-out;
+}
+
+.modal-panel {
+  width: min(460px, 100%);
+  background: var(--bg-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  padding: 20px;
+  animation: modal-rise var(--dur-normal, 200ms) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-panel:focus {
+  outline: none;
+}
+
+/* Destructive actions get the danger accent so the stakes read at a glance. */
+.modal-panel.is-danger {
+  border-color: var(--danger-soft, rgba(248, 113, 113, 0.3));
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.modal-head h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.modal-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--text-secondary);
+}
+
+.modal-panel.is-danger .modal-icon {
+  background: var(--danger-soft, rgba(248, 113, 113, 0.14));
+  color: var(--danger, #f87171);
+}
+
+.modal-close {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  background: var(--bg-3);
+  color: var(--text-primary);
+}
+
+.modal-description {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   Tabular numerals (DESIGN.md §24.3)
+
+   §24.3 requires tabular figures on playtime, percentages, dates and session
+   counts. Only three selectors had them, so numbers jittered as they changed —
+   in session lists, the timeline, backup sizes, confidence bars and heatmap
+   tooltips. Grouped here rather than scattered so the rule is auditable.
+   ──────────────────────────────────────────────────────────────────── */
+
+.session-row .dur,
+.session-time,
+.timeline-day-total,
+.backup-size,
+.backup-when,
+.detect-confidence,
+.heatmap-legend,
+.install-size,
+.playtime-value,
+.completion-pct,
+.stat-sub {
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}

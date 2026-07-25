@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import type { Game } from "@/types";
@@ -22,9 +22,11 @@ export function GameCard({ game, index = 0 }: Props) {
   const [launching, setLaunching] = useState(false);
   const missing = game.primary_install_status === "missing";
 
-  async function handlePlay(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  // No preventDefault/stopPropagation needed any more: the navigation anchor is
+  // a *sibling* overlay rather than an ancestor of these buttons, so a click on a
+  // button cannot reach it. Previously each handler had to cancel the enclosing
+  // link's default behaviour, which is suppressing a symptom of invalid markup.
+  async function handlePlay() {
     if (launching || missing) return;
     setLaunching(true);
     try {
@@ -39,15 +41,11 @@ export function GameCard({ game, index = 0 }: Props) {
     }
   }
 
-  function handleFavorite(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  function handleFavorite() {
     toggleFavorite(game.id);
   }
 
-  async function handleRestore(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
+  async function handleRestore() {
     try {
       await api.setHidden(game.id, false);
       await load();
@@ -57,11 +55,20 @@ export function GameCard({ game, index = 0 }: Props) {
   }
 
   return (
-    <Link
-      to={`/library/${game.id}`}
+    // An <article> wrapper with the link as an overlay sibling. A <button> nested
+    // inside an <a> is invalid HTML, and browsers disagree about how it should
+    // behave for pointer, keyboard and assistive technology — on the library's
+    // most-used control. Keyboard order is anchor first, then the quick actions,
+    // so Tab reaches "open details" before the secondary buttons.
+    <article
       className="game-card fade-up"
       style={{ animationDelay: `${Math.min(index, 16) * 35}ms` }}
     >
+      <Link
+        to={`/library/${game.id}`}
+        className="game-card-link"
+        aria-label={`View details for ${game.title}`}
+      />
       <div className="game-cover">
         <GameArtwork src={game.cover_path} title={game.title} kind="cover" />
         {game.is_favorite ? (
@@ -87,6 +94,7 @@ export function GameCard({ game, index = 0 }: Props) {
               className="qa-btn"
               onClick={handleRestore}
               title="Restore to library"
+              aria-label={`Restore ${game.title} to your library`}
             >
               <Icon name="rotate-ccw" size={15} />
             </button>
@@ -97,6 +105,11 @@ export function GameCard({ game, index = 0 }: Props) {
               onClick={handlePlay}
               disabled={launching || missing}
               title={missing ? "Missing — open details to relocate or remove" : "Play"}
+              aria-label={
+                missing
+                  ? `${game.title} is missing — open details to relocate or remove it`
+                  : `Play ${game.title}`
+              }
             >
               <Icon
                 name={launching ? "refresh" : missing ? "alert-triangle" : "play"}
@@ -110,10 +123,19 @@ export function GameCard({ game, index = 0 }: Props) {
             className={clsx("qa-btn", game.is_favorite && "is-on")}
             onClick={handleFavorite}
             title={game.is_favorite ? "Remove from favorites" : "Add to favorites"}
+            aria-label={
+              game.is_favorite
+                ? `Remove ${game.title} from favorites`
+                : `Add ${game.title} to favorites`
+            }
+            aria-pressed={game.is_favorite === 1}
           >
             <Icon name="star" size={15} />
           </button>
-          <span className="qa-btn qa-details" title="View details">
+          {/* Decorative affordance for the card-wide link, not a control of its
+              own — hidden from assistive technology so it is not announced as a
+              second way to do the same thing. */}
+          <span className="qa-btn qa-details" aria-hidden="true">
             <Icon name="chevron-right" size={16} />
           </span>
         </div>
@@ -129,6 +151,6 @@ export function GameCard({ game, index = 0 }: Props) {
         </div>
         <PlatformBadge code={game.primary_source_code} label={game.primary_source_label} />
       </div>
-    </Link>
+    </article>
   );
 }

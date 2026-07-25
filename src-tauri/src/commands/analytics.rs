@@ -1,4 +1,31 @@
 //! Aggregations for the Dashboard and Analytics pages.
+//!
+//! # Convention: calendar-based analytics use the user's local day
+//!
+//! **Every calendar-based aggregation in NOVARA buckets by the user's local
+//! calendar day, unless a specific feature explicitly documents otherwise.**
+//! This is a project-wide convention, not a detail of the heatmap below —
+//! `heatmap_rows` is simply where it was first enforced, after a UTC/local
+//! mismatch between this command and the frontend grid shifted every cell (and
+//! the longest-streak figure derived from it) by a day for any timezone away
+//! from UTC.
+//!
+//! Concretely, for anything grouping timestamps into days:
+//!   * bucket with SQLite's `date(col, 'localtime')`, not `substr(col, 1, 10)`
+//!     or any other UTC-based slice;
+//!   * on the frontend, derive day keys from local `Date` components
+//!     (`getFullYear()`/`getMonth()`/`getDate()`, as in `lib/heatmap.ts`'s
+//!     `localDayKey`), never from `toISOString()`, which converts to UTC;
+//!   * compare cutoffs through `datetime(...)` on both sides of a SQL query,
+//!     not as raw strings — `now_rfc3339()` produces a `T` separator while
+//!     SQLite's date functions produce a space, and `'T' > ' '` silently
+//!     degrades a string-compared boundary.
+//!
+//! A future analytics feature (a weekly summary, a "played this month" stat,
+//! anything that answers "which day") should follow this by default. If a
+//! feature genuinely needs UTC bucketing — cross-timezone comparison, a
+//! server-side rollup — that is a deliberate exception and must say so in its
+//! own docs, precisely because the default reader's assumption will be local.
 
 use std::sync::Arc;
 
@@ -103,33 +130,64 @@ pub async fn dashboard_stats(state: State<'_, Arc<AppState>>) -> AppResult<Dashb
     })
 }
 
-#[derive(Serialize, sqlx::FromRow)]
+#[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct HeatmapCell {
     pub day: String,         // YYYY-MM-DD
     pub seconds: i64,
 }
 
+/// Bucket play sessions into days, using `day_modifier` as SQLite's date
+/// modifier.
+///
+/// Production passes `"localtime"`, which resolves each row against the OS
+/// timezone database and so handles historical DST transitions correctly. Tests
+/// pass an explicit offset such as `"+330 minutes"`, because `'localtime'`
+/// depends on the machine's timezone and cannot be varied reliably from a test
+/// process on Windows. The bucketing being verified — `date(started_at, <mod>)`
+/// and the grouping around it — is identical either way; only the source of the
+/// offset differs.
+pub(crate) async fn heatmap_rows(
+    pool: &sqlx::SqlitePool,
+    days: i64,
+    day_modifier: &str,
+) -> AppResult<Vec<HeatmapCell>> {
+    Ok(sqlx::query_as(
+        r#"
+        SELECT
+          date(started_at, ?2) as day,
+          SUM(MAX(duration_seconds - idle_seconds, 0)) as seconds
+        FROM play_sessions
+        WHERE datetime(started_at) >= datetime('now', printf('-%d days', ?1))
+        GROUP BY day
+        ORDER BY day
+        "#,
+    )
+    .bind(days)
+    .bind(day_modifier)
+    // Propagated rather than `.unwrap_or_default()`: an empty heatmap and a
+    // failed heatmap query looked identical to the user and to the logs.
+    .fetch_all(pool)
+    .await?)
+}
+
+/// Daily active playtime for the heatmap.
+///
+/// Days are **local calendar days**, not UTC ones. `started_at` is stored in UTC,
+/// and grouping by `substr(started_at, 1, 10)` bucketed sessions by UTC date
+/// while the frontend grid is built from local midnights — so for any timezone
+/// away from UTC the entire heatmap, and the longest-streak figure derived from
+/// it, was shifted by a day. A session played at 1am local in Asia/Kolkata
+/// (+05:30) belongs to that local day, which is what the user means by it.
+///
+/// The cutoff is compared through `datetime()` on both sides rather than as
+/// strings. `now_rfc3339` produces `2026-07-25T12:00:00+00:00` while SQLite's
+/// date functions produce `2026-07-25 12:00:00` with a space, and `'T' > ' '`,
+/// so a lexicographic comparison silently degraded the boundary to "start of the
+/// cutoff day".
 #[tauri::command]
 pub async fn heatmap(
     days: Option<i64>,
     state: State<'_, Arc<AppState>>,
 ) -> AppResult<Vec<HeatmapCell>> {
-    let cutoff_days = days.unwrap_or(365);
-    let rows: Vec<HeatmapCell> = sqlx::query_as(
-        r#"
-        SELECT
-          substr(started_at, 1, 10) as day,
-          SUM(MAX(duration_seconds - idle_seconds, 0)) as seconds
-        FROM play_sessions
-        WHERE started_at >= datetime('now', printf('-%d days', ?1))
-        GROUP BY day
-        ORDER BY day
-        "#,
-    )
-    .bind(cutoff_days)
-    // Propagated rather than `.unwrap_or_default()`: an empty heatmap and a
-    // failed heatmap query looked identical to the user and to the logs.
-    .fetch_all(&state.db.pool)
-    .await?;
-    Ok(rows)
+    heatmap_rows(&state.db.pool, days.unwrap_or(365), "localtime").await
 }

@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
 import { api, onEvent } from "@/lib/ipc";
 import { notify, reportError } from "@/lib/toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { CompletionState, GameWithInstalls, Installation, PlaySession } from "@/types";
 import {
   formatBytes,
@@ -41,6 +42,7 @@ export function GameDetails() {
   const [launching, setLaunching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [sessions, setSessions] = useState<PlaySession[]>([]);
+  const { confirm, dialog } = useConfirm();
 
   useEffect(() => {
     api.getGame(id).then((g) => {
@@ -140,9 +142,14 @@ export function GameDetails() {
     const hidden = !game.is_hidden;
     if (
       hidden &&
-      !confirm(
-        `Remove "${game.title}" from your library? This keeps its playtime, sessions, and achievements — you can bring it back any time.`
-      )
+      !(await confirm({
+        title: `Remove "${game.title}" from your library?`,
+        description:
+          "This keeps its playtime, sessions, and achievements — you can bring it back any time.",
+        confirmLabel: "Remove",
+        tone: "danger",
+        icon: "trash",
+      }))
     ) {
       return;
     }
@@ -237,6 +244,7 @@ export function GameDetails() {
 
   return (
     <>
+      {dialog}
       {/* Hero banner with floating cover */}
       <div className="details-hero fade-up">
         <Link to="/library" className="details-back">
@@ -277,10 +285,26 @@ export function GameDetails() {
             {game.developer && <span className="chip">{game.developer}</span>}
             {game.release_year && <span className="chip">{game.release_year}</span>}
             <PlatformBadge code={game.primary_source_code} label={game.primary_source_label} />
+            {/* All three unavailable states, not just `missing`. The
+                Installations list below already distinguishes deleted and
+                offline, so showing only one of them here contradicted it within
+                a single page (DESIGN.md §23.4). */}
             {game.primary_install_status === "missing" && (
               <span className="chip chip-missing">
                 <Icon name="alert-triangle" size={11} />
                 Missing
+              </span>
+            )}
+            {game.primary_install_status === "deleted" && (
+              <span className="chip chip-deleted">
+                <Icon name="alert-circle" size={11} />
+                Not installed
+              </span>
+            )}
+            {game.primary_install_status === "offline" && (
+              <span className="chip chip-offline">
+                <Icon name="info" size={11} />
+                Drive offline
               </span>
             )}
             <span className="chip cap">{game.completion_state}</span>
@@ -306,6 +330,8 @@ export function GameDetails() {
             className={clsx("btn icon-btn", game.is_favorite && "fav-on")}
             onClick={fav}
             title={game.is_favorite ? "Remove from favorites" : "Add to favorites"}
+            aria-label={game.is_favorite ? "Remove from favorites" : "Add to favorites"}
+            aria-pressed={game.is_favorite === 1}
           >
             <Icon name="star" size={16} />
           </button>
@@ -326,6 +352,7 @@ export function GameDetails() {
             onClick={refreshMetadata}
             disabled={refreshing}
             title="Refresh description, genres, and artwork from available sources"
+            aria-label="Refresh description, genres, and artwork from available sources"
           >
             <Icon name="refresh" size={16} className={refreshing ? "spin" : undefined} />
           </button>
@@ -333,6 +360,7 @@ export function GameDetails() {
             className="btn icon-btn"
             onClick={toggleHidden}
             title={game.is_hidden ? "Restore to library" : "Remove from library"}
+            aria-label={game.is_hidden ? "Restore to library" : "Remove from library"}
           >
             <Icon name={game.is_hidden ? "rotate-ccw" : "trash"} size={16} />
           </button>

@@ -19,5 +19,10 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     restoreMocks: true,
+    // Deliberately not UTC. The heatmap's day-key bug was invisible at UTC+00:00
+    // — local midnight and UTC midnight coincide, so a test comparing local and
+    // UTC day keys passes vacuously. Asia/Kolkata is +05:30, which also exercises
+    // a half-hour offset rather than a whole-hour one.
+    env: { TZ: "Asia/Kolkata" },
   },
 });

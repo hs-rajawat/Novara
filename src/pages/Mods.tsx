@@ -15,12 +15,16 @@ export function Mods() {
           Mods
         </h2>
         <div className="page-sub">
-          Filesystem-indexed mods with enable/disable + load order.
+          Track installed mods, toggle them on or off, and control load order.
         </div>
       </div>
-      <EmptyState icon="package" title="Mod tracking — coming next">
-        The data model is ready (mods table). Wire a per-game mods folder
-        watcher to populate it.
+      {/* User-facing copy. This previously read "The data model is ready (mods
+          table). Wire a per-game mods folder watcher to populate it." — a note to
+          a developer shown to the person using the app. */}
+      <EmptyState icon="package" title="Mod tracking isn't available yet">
+        NOVARA will list the mods installed for this game here, so you can enable
+        or disable them and set their load order. This feature is still in
+        development.
       </EmptyState>
     </>
   );

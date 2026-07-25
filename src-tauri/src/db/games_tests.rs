@@ -799,6 +799,163 @@ async fn move_detection_preserves_a_manual_executable_override() {
     );
 }
 
+// ── heatmap day bucketing across timezones ──────────────────────────────
+
+/// Insert a session that started at an explicit UTC instant.
+async fn seed_session_at(db: &crate::db::Db, game_id: &str, started_at: &str, seconds: i64) {
+    sqlx::query(
+        "INSERT INTO play_sessions (game_id, started_at, ended_at, duration_seconds, idle_seconds) \
+         VALUES (?1, ?2, ?2, ?3, 0)",
+    )
+    .bind(game_id)
+    .bind(started_at)
+    .bind(seconds)
+    .execute(&db.pool)
+    .await
+    .expect("seed session");
+}
+
+/// Sessions were bucketed by UTC date while the frontend grid was built from
+/// local midnights, so the whole heatmap shifted by a day for any timezone away
+/// from UTC. A session at 18:30 UTC is already the next day in +05:30 and must be
+/// counted there.
+#[tokio::test]
+async fn heatmap_buckets_sessions_by_local_day_not_utc_day() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Late Night").await;
+    let now = chrono::Utc::now();
+    // 18:30 UTC today → 00:00 tomorrow at +05:30.
+    let instant = now
+        .date_naive()
+        .and_hms_opt(18, 30, 0)
+        .unwrap()
+        .and_utc()
+        .to_rfc3339();
+    seed_session_at(&db, &game, &instant, 600).await;
+
+    let utc = crate::commands::analytics::heatmap_rows(&db.pool, 365, "utc")
+        .await
+        .unwrap();
+    let kolkata = crate::commands::analytics::heatmap_rows(&db.pool, 365, "+330 minutes")
+        .await
+        .unwrap();
+
+    assert_eq!(utc.len(), 1);
+    assert_eq!(kolkata.len(), 1);
+    assert_eq!(
+        utc[0].day,
+        now.format("%Y-%m-%d").to_string(),
+        "UTC bucketing keeps it on today"
+    );
+    assert_eq!(
+        kolkata[0].day,
+        (now + chrono::Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string(),
+        "at +05:30 the session belongs to the next local day"
+    );
+}
+
+/// The same instant west of UTC lands on the previous local day.
+#[tokio::test]
+async fn heatmap_buckets_correctly_west_of_utc() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Early Morning").await;
+    let now = chrono::Utc::now();
+    let instant = now
+        .date_naive()
+        .and_hms_opt(2, 0, 0)
+        .unwrap()
+        .and_utc()
+        .to_rfc3339();
+    seed_session_at(&db, &game, &instant, 300).await;
+
+    let pacific = crate::commands::analytics::heatmap_rows(&db.pool, 365, "-480 minutes")
+        .await
+        .unwrap();
+    assert_eq!(
+        pacific[0].day,
+        (now - chrono::Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string(),
+        "02:00 UTC is still the previous day at -08:00"
+    );
+}
+
+/// Two sessions on different UTC days but the same local day must be one bucket.
+#[tokio::test]
+async fn heatmap_merges_sessions_that_share_a_local_day() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Across Midnight").await;
+    let today = chrono::Utc::now().date_naive();
+
+    // 19:00 and 20:00 UTC are both the next day at +05:30.
+    for hour in [19, 20] {
+        let instant = today.and_hms_opt(hour, 0, 0).unwrap().and_utc().to_rfc3339();
+        seed_session_at(&db, &game, &instant, 100).await;
+    }
+
+    let rows = crate::commands::analytics::heatmap_rows(&db.pool, 365, "+330 minutes")
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1, "one local day, one bucket: {rows:?}");
+    assert_eq!(rows[0].seconds, 200, "durations are summed within a day");
+}
+
+#[tokio::test]
+async fn heatmap_reports_active_time_excluding_idle() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Idled").await;
+    let instant = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO play_sessions (game_id, started_at, ended_at, duration_seconds, idle_seconds) \
+         VALUES (?1, ?2, ?2, 600, 150)",
+    )
+    .bind(&game)
+    .bind(&instant)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    let rows = crate::commands::analytics::heatmap_rows(&db.pool, 365, "utc")
+        .await
+        .unwrap();
+    assert_eq!(rows[0].seconds, 450, "duration minus idle");
+}
+
+/// The cutoff compared an RFC3339 stamp (`…T…`) against SQLite's space-separated
+/// `datetime('now', …)` lexicographically, and `'T' > ' '`, so the boundary
+/// silently became "start of the cutoff day". Both sides now go through
+/// `datetime()`.
+#[tokio::test]
+async fn heatmap_window_excludes_sessions_older_than_the_cutoff() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Windowed").await;
+    let now = chrono::Utc::now();
+
+    seed_session_at(&db, &game, &(now - chrono::Duration::days(3)).to_rfc3339(), 60).await;
+    seed_session_at(&db, &game, &(now - chrono::Duration::days(40)).to_rfc3339(), 60).await;
+
+    let rows = crate::commands::analytics::heatmap_rows(&db.pool, 30, "utc")
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1, "only the session inside the window: {rows:?}");
+
+    let wide = crate::commands::analytics::heatmap_rows(&db.pool, 365, "utc")
+        .await
+        .unwrap();
+    assert_eq!(wide.len(), 2, "a wider window includes both");
+}
+
+#[tokio::test]
+async fn heatmap_is_empty_for_a_library_with_no_sessions() {
+    let db = test_db().await;
+    let rows = crate::commands::analytics::heatmap_rows(&db.pool, 365, "localtime")
+        .await
+        .unwrap();
+    assert!(rows.is_empty());
+}
+
 // ── unrelated pure helper, cheap to pin ─────────────────────────────────
 
 #[test]

@@ -1,7 +1,8 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import clsx from "clsx";
 import { Icon, type IconName } from "@/components/Icon";
+import { api } from "@/lib/ipc";
 
 const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
@@ -18,6 +19,19 @@ export function Sidebar() {
   const loc = useLocation();
   const railRef = useRef<HTMLElement>(null);
   const [indicatorTop, setIndicatorTop] = useState<number | null>(null);
+  // Read from the backend rather than hardcoded. The footer said "v0.1.0" as a
+  // literal, duplicating what `get_app_info` already reports from Cargo, so it
+  // would have silently gone stale at the first version bump.
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .appInfo()
+      .then((info) => setVersion(info.version))
+      // A missing version is cosmetic: fall back to the product name rather than
+      // interrupting the user over it.
+      .catch(() => setVersion(null));
+  }, []);
 
   // Measure the active .nav-item after each navigation rather than
   // re-deriving react-router's own active-matching rules here. Height isn't
@@ -69,7 +83,7 @@ export function Sidebar() {
 
       <div className="sidebar-footer">
         <span className="dot" />
-        v0.1.0 · local-first · no telemetry
+        {version ? `v${version}` : "NOVARA"} · local-first · no telemetry
       </div>
     </aside>
   );

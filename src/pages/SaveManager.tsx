@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { open } from "@tauri-apps/plugin-dialog";
 import clsx from "clsx";
 import { api } from "@/lib/ipc";
-import { reportError } from "@/lib/toast";
+import { notify, reportError } from "@/lib/toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type { DetectedSavePath, SaveBackup, SaveProfile } from "@/types";
 import { formatBytes, formatRelative } from "@/lib/format";
 import { Icon } from "@/components/Icon";
@@ -18,6 +19,7 @@ export function SaveManager() {
   const [busy, setBusy] = useState(false);
   const [detected, setDetected] = useState<DetectedSavePath[] | null>(null);
   const [detecting, setDetecting] = useState(false);
+  const { confirm, dialog } = useConfirm();
 
   async function load() {
     const ps = await api.listSaveProfiles(id);
@@ -45,18 +47,28 @@ export function SaveManager() {
   }, [active]);
 
   async function addManualProfile() {
-    if (!label.trim()) return;
-    const picked = await open({ directory: true, multiple: false });
-    const dir = typeof picked === "string" ? picked : null;
-    if (!dir) return;
-    await api.createSaveProfile({
-      game_id: id,
-      label,
-      source_dir: dir,
-      is_manual_override: true,
-    });
-    setLabel("");
-    await load();
+    // Previously a bare `return`: clicking the button with an empty label did
+    // nothing at all — the folder picker never opened and no reason was given.
+    if (!label.trim()) {
+      notify("Give the save profile a name first", "warning");
+      return;
+    }
+    try {
+      const picked = await open({ directory: true, multiple: false });
+      const dir = typeof picked === "string" ? picked : null;
+      // Cancelling the picker is a deliberate choice, not an error.
+      if (!dir) return;
+      await api.createSaveProfile({
+        game_id: id,
+        label,
+        source_dir: dir,
+        is_manual_override: true,
+      });
+      setLabel("");
+      await load();
+    } catch (e) {
+      reportError(e, "add this save profile");
+    }
   }
 
   async function addDetectedProfile(path: string) {
@@ -73,15 +85,21 @@ export function SaveManager() {
 
   async function deleteProfile(profileId: string) {
     if (
-      !confirm(
-        "Delete this save profile? Existing backup files will not be removed."
-      )
+      !(await confirm({
+        title: "Delete this save profile?",
+        description: "Existing backup files will not be removed.",
+        confirmLabel: "Delete profile",
+        tone: "danger",
+        icon: "trash",
+      }))
     )
       return;
     setBusy(true);
     try {
       await api.deleteSaveProfile(profileId);
       await load();
+    } catch (e) {
+      reportError(e, "delete this save profile");
     } finally {
       setBusy(false);
     }
@@ -93,6 +111,8 @@ export function SaveManager() {
     try {
       await api.backupNow(active);
       setBackups(await api.listBackups(active));
+    } catch (e) {
+      reportError(e, "create a backup");
     } finally {
       setBusy(false);
     }
@@ -100,14 +120,24 @@ export function SaveManager() {
 
   async function restore(b: SaveBackup) {
     if (
-      !confirm(
-        `Restore backup from ${b.created_at}? Current state will be archived first.`
-      )
+      !(await confirm({
+        title: "Restore this backup?",
+        description: `Your current saves will be archived first, so this can be undone. Backup taken ${formatRelative(
+          b.created_at
+        )}.`,
+        confirmLabel: "Restore",
+        tone: "danger",
+        icon: "rotate-ccw",
+      }))
     )
       return;
     setBusy(true);
     try {
       await api.restoreBackup(b.id);
+      notify("Saves restored from backup", "success");
+      setBackups(await api.listBackups(active!));
+    } catch (e) {
+      reportError(e, "restore this backup");
     } finally {
       setBusy(false);
     }
@@ -125,6 +155,7 @@ export function SaveManager() {
 
   return (
     <>
+      {dialog}
       <div className="row spread fade-up" style={{ marginBottom: 18, alignItems: "flex-start" }}>
         <div className="page-head" style={{ marginBottom: 0 }}>
           <Link to={`/library/${id}`} className="back-link">

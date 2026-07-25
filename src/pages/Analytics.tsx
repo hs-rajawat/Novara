@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/ipc";
 import type { HeatmapCell } from "@/types";
 import { formatPlaytime } from "@/lib/format";
+import { buildHeatmap, longestStreak } from "@/lib/heatmap";
+import { reportError } from "@/lib/toast";
 import { Icon } from "@/components/Icon";
 import { StatCard } from "@/components/StatCard";
 
@@ -15,16 +17,14 @@ const MONTHS = [
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-interface Week {
-  days: (HeatmapCell | null)[];
-  firstDate: Date;
-}
-
 export function Analytics() {
   const [cells, setCells] = useState<HeatmapCell[]>([]);
 
   useEffect(() => {
-    api.heatmap(365).then(setCells);
+    api
+      .heatmap(365)
+      .then(setCells)
+      .catch((e) => reportError(e, "load your activity heatmap"));
   }, []);
 
   const weeks = useMemo(() => buildHeatmap(cells), [cells]);
@@ -173,49 +173,6 @@ export function Analytics() {
       </div>
     </>
   );
-}
-
-function buildHeatmap(cells: HeatmapCell[]): Week[] {
-  const byDay = new Map(cells.map((c) => [c.day, c]));
-  const days: { date: Date; cell: HeatmapCell | null }[] = [];
-  const end = new Date();
-  end.setHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 364);
-  // Pad start back to Sunday so the grid aligns.
-  start.setDate(start.getDate() - start.getDay());
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const iso = d.toISOString().slice(0, 10);
-    days.push({ date: new Date(d), cell: byDay.get(iso) ?? null });
-  }
-  const weeks: Week[] = [];
-  for (let i = 0; i < days.length; i += 7) {
-    const chunk = days.slice(i, i + 7);
-    weeks.push({
-      days: chunk.map((d) => d.cell),
-      firstDate: chunk[0].date,
-    });
-  }
-  return weeks;
-}
-
-function longestStreak(activeDaysIso: string[]): number {
-  const sorted = [...activeDaysIso].sort();
-  let best = 0;
-  let cur = 0;
-  let prev: string | null = null;
-  for (const day of sorted) {
-    cur = prev !== null && nextDay(prev) === day ? cur + 1 : 1;
-    if (cur > best) best = cur;
-    prev = day;
-  }
-  return best;
-}
-
-function nextDay(iso: string): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString().slice(0, 10);
 }
 
 function colorForIntensity(t: number): string {
