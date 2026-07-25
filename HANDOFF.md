@@ -1,7 +1,7 @@
 # NOVARA — Project Handoff
 
-> Living handoff for a fresh Claude session to continue development without losing context.
-> Last updated: 2026-07-21. Branch: `main`. HEAD: `ce27088`.
+> Living handoff for a fresh session to continue development without losing context.
+> Last updated: 2026-07-25. Branch: `main`. HEAD: `26795b9`.
 > NOTE: This file is documentation-only. Nothing in the app reads it; delete or update freely.
 
 ---
@@ -29,7 +29,7 @@ Crate layout is documented at the top of `lib.rs`. Dependency graph is a strict 
 | `integrity` | **Library Integrity System** — install-status resolution + background verifier. Pure leaf checks in `mod.rs`; stateful service in `service.rs`. |
 | `models` | Domain structs crossing IPC (snake_case for sqlx+serde; TS adapts). |
 | `scanner` | Pluggable `Scanner` trait + `ScannerOrchestrator`. Sources: `steam`, `epic`, `manual`. |
-| `metadata` | Pluggable `MetadataProvider` trait. **Currently only a no-op `offline` provider** — the next milestone builds this out. |
+| `metadata` | Pluggable providers + identity resolution. **Implemented** (`26795b9`): `steam_local`, `steam_cdn`, `epic_catalog`; separate text and artwork fill services with per-provider circuit breakers; `offline` no-op retained. All network gated behind `metadata_enabled` **and** `offline_mode`. |
 | `save_mgr` / `save_detect` | Save-folder backup/restore + auto-detection. |
 | `playtime` | Process watcher + idle detection (5s poll). |
 | `launcher` / `sources` | Launch dispatch (Steam/Epic URIs via `ShellExecuteW`). |
@@ -61,12 +61,38 @@ Migrations applied (`src-tauri/migrations/`):
 - `0003_save_detection.sql` — save auto-detection fields.
 - `0004_install_status.sql` — `game_installations.status` column.
 - `0005_install_verified_at.sql` — `last_verified_at` column.
+- `0006_metadata_artwork.sql` — `games.logo_path`, the `artwork_assets`
+  provenance/refresh ledger, and the `metadata_enabled` setting.
 
-**Key tables:** `sources` (seeded: steam, epic, gog, xbox, ubisoft, battle, emulator, manual), `games`, `genres`/`game_genres`, `game_installations`, `play_sessions`, `achievements`/`achievement_templates`, `save_profiles`/`save_backups`, `media`, `mods`, `profiles`, `settings`, `scan_runs`.
+**Key tables:** `sources` (seeded: steam, epic, gog, xbox, ubisoft, battle, emulator, manual), `games`, `genres`/`game_genres`, `game_installations`, `play_sessions`, `achievements`/`achievement_templates`, `save_profiles`/`save_backups`, `media`, `mods`, `profiles`, `settings`, `scan_runs`, `artwork_assets`.
 
-**Artwork columns already exist on `games`** (unused-until-populated by user today): `cover_path`, `hero_path`, `icon_path`, `metadata_json`, `metadata_source`. There is NO `logo_path` column yet, and no per-artwork provenance/state table — the metadata milestone will need schema additions (see §5).
+**Artwork columns on `games`:** `cover_path`, `hero_path`, `icon_path`,
+`logo_path`, `metadata_json`, `metadata_source`. These remain the **render
+source of truth** — the frontend reads them directly with no join.
 
-**Artwork storage convention (established, reuse it):** user-set artwork is copied into `<app_data>/artwork/<game_id>/<kind>.<ext>` by `copy_artwork` in `commands/games.rs`. The DB stores the absolute path; the frontend converts via `toImgSrc`. Any downloaded artwork should follow the same on-disk layout.
+**`artwork_assets` is a slot-ownership ledger, not an attempt log.** One row
+per `(game_id, kind)`, enforced by `UNIQUE(game_id, kind)`. The never-clobber
+guarantee is expressed *as* that constraint, in SQL, inside
+`Db::upsert_artwork_ready` and `Db::mark_artwork_failed`:
+
+```sql
+ON CONFLICT(game_id, kind) DO UPDATE SET ...
+WHERE artwork_assets.user_locked = 0
+  AND (artwork_assets.state != 'ready' OR artwork_assets.source = excluded.source)
+```
+
+A conflicting write against a `user_locked` row, or a `ready` row owned by a
+*different* provider, becomes a no-op. Both methods return whether the write
+actually landed. **Any new provider must go through these methods** rather
+than writing `games.*_path` directly, or the guarantee is bypassed.
+
+`kind`, `state` and `user_locked` carry `CHECK` constraints; `source` is
+deliberately free-form because provider codes are the extension point.
+`state` is one of `pending|ready|failed|skipped`.
+
+**Artwork storage convention (established, reuse it):** artwork is copied or
+downloaded into `<app_data>/artwork/<game_id>/<kind>.<ext>`. The DB stores the
+absolute path; the frontend converts via `toImgSrc`.
 
 ---
 
@@ -74,7 +100,11 @@ Migrations applied (`src-tauri/migrations/`):
 
 Newest first (see `git log`):
 
-- **`ce27088` — Installation Integrity infrastructure (Phase 1).** The most recent milestone. Details in §6.
+- **`26795b9` — Metadata & Artwork subsystem.** The most recent milestone.
+  Provider abstraction + identity resolution, `steam_local` / `steam_cdn` /
+  `epic_catalog` providers, `artwork_assets` ledger (migration `0006`), local
+  artwork store, opt-in `metadata_enabled` gate. Details in §3 and §10.
+- **`ce27088` — Installation Integrity infrastructure (Phase 1).** Details in §6.
 - **`60a1b7b` — Rebrand "Game Vault" → "NOVARA"** (branding/strings/comments only; compatibility identifiers preserved — see §7).
 - **`3d0c0fd` — Epic launcher reliability with pre-warm support.**
 - **`c021c0b` — Launcher URIs via `ShellExecuteW`** instead of `cmd /c start`.
@@ -84,33 +114,76 @@ Newest first (see `git log`):
 
 ---
 
-## 5. Planned Roadmap — NEXT MILESTONE: Automatic Metadata & Artwork
+## 5. Current Priority — Pre-Release Remediation
 
-**This is the active priority.** The user requested a plan (analysis + provider abstraction, cache structure, schema changes, download/update strategy, refresh policy, error handling) and **approval is required before any coding.** No implementation has started; the previous session entered plan mode and was interrupted before producing the plan.
+**The Metadata & Artwork milestone is SHIPPED** (`26795b9`). Earlier revisions
+of this file described it as unstarted and awaiting a plan; that was wrong and
+is corrected here. Do not re-plan or re-implement it.
 
-### Goals (verbatim intent)
-- Auto-fetch game metadata after a scan.
-- Download + cache cover art, hero art, logos, icons.
-- Support Steam and Epic first.
-- Store artwork locally for offline use.
-- Provider-agnostic so IGDB / SteamGridDB / others can be added later.
-- Background downloads must never block scans or launching.
-- Missing artwork falls back gracefully to placeholders.
+The current priority is **audit-driven remediation before first release**,
+sequenced in 13 batches ordered by dependency rather than severity. See §11
+for the batch list and status.
 
-### Existing scaffolding to build on (do NOT reinvent)
-- `metadata/mod.rs` already defines `GameMetadata` struct + `MetadataProvider` async trait (`code()`, `lookup(title)`). `offline.rs` is a no-op provider. Commented stubs for `igdb`/`rawg` exist. **This trait likely needs extending** to return/download artwork (currently only returns URLs in `GameMetadata.cover_url`/`hero_url`), and to look up by source app-id (Steam appid / Epic catalog id), not just fuzzy title.
-- Artwork on-disk convention + `copy_artwork` helper (§3) — reuse the `<app_data>/artwork/<game_id>/` layout; add a download-to-that-path path.
-- `games` columns `metadata_json` / `metadata_source` are ready to hold raw blobs + provenance.
-- Event bus for progress + completion (`GameUpdated` already re-renders GameDetails/Library). Consider adding metadata-specific events if granular progress UI is wanted.
-- `ScannerOrchestrator::run` is the natural trigger point (post-scan hook, mirroring how `scan_paths_now` already runs a post-scan integrity sweep in `commands/scan.rs`).
+### Metadata & Artwork — goals as delivered
+- ✅ Auto-fetch game metadata after a scan.
+- ✅ Download + cache cover art, hero art, logos, icons.
+- ✅ Support Steam and Epic first.
+- ✅ Store artwork locally for offline use.
+- ✅ Provider-agnostic so IGDB / SteamGridDB / others can be added later.
+- ❌ **Background downloads must never block scans or launching.** Not met —
+  `scan_paths_now` runs scan → integrity → text fill → artwork fill inline
+  before returning, so "Scan now" stays in `Scanning…` for the whole fill.
+  This violates §7.4 and is Batch 6 of the remediation plan.
+- ⚠️ **Missing artwork falls back gracefully to placeholders.** The fallback
+  works, but it currently masks a real defect: the Tauri asset protocol is
+  not enabled, so *every* image fails to load and silently renders the
+  placeholder. Batch 1.
 
-### Design areas the plan must cover (per user's explicit ask)
-1. **Provider abstraction** — extend `MetadataProvider` for artwork + id-based lookup; a registry/orchestrator picking providers by availability + priority; Steam/Epic as first "providers" (Steam can source artwork from its CDN/appid; Epic from catalog).
-2. **Local cache structure** — extend `<app_data>/artwork/<game_id>/` to include `logo`/`icon` kinds; decide filename/provenance scheme; dedupe/eviction not required v1 but note it.
-3. **Schema changes** — likely: a `logo_path` column (migration `0006_*`), and possibly an artwork/asset table tracking (kind, source, url, local_path, state, fetched_at, etag) so refresh + per-asset fallback work cleanly. Decide table-vs-columns in the plan.
-4. **Download/update strategy** — background task pool, concurrency cap, never block scan/launch, retry/backoff, HTTP client choice (respect privacy — only reach network when the feature is enabled).
-5. **Refresh policy** — when to re-fetch (new game, user request, stale after N days, missing asset only), and how to avoid clobbering user-set artwork (mirror the `executable_override` pattern — never overwrite a manual asset).
-6. **Error handling** — partial success (some assets fetched, some not), offline/timeout, placeholder fallback already handled by `toImgSrc` returning `undefined` → component placeholder.
+### How it is built (read this before touching `metadata/`)
+
+- `metadata/mod.rs` — `ArtworkKind` (`cover|hero|logo|icon`, `ALL` drives the
+  fill set), provider traits, `Lookup` result type distinguishing
+  `Temporary` from `Permanent` failure (the circuit breaker keys off this).
+- `metadata/identity.rs` — resolves a game to a provider-specific identity,
+  **source app-id first, fuzzy title only as fallback**.
+- `metadata/providers/` — `steam_local` (copies from Steam's own
+  `librarycache`, zero network), `steam_cdn`, `epic_catalog`.
+- `metadata/store.rs` — writes bytes into
+  `<app_data>/artwork/<game_id>/<kind>.<ext>`.
+- `metadata/text_service.rs` / `metadata/artwork_service.rs` — the two fill
+  services. Each has a per-provider circuit breaker. `fill_missing` computes
+  `missing = ArtworkKind::ALL − {state == 'ready'}` per game and skips games
+  with nothing missing.
+- `db/artwork.rs` — the ownership guard (§3). Providers must write through it.
+
+### Known defects in this subsystem (do not "discover" these again)
+
+1. **Artwork never renders.** The Tauri asset protocol is not enabled in
+   `tauri.conf.json` at all, and the CSP allows only
+   `https://asset.localhost` while Windows serves `http://`. Two independent
+   blockers. `GameArtwork`'s `onError` falls back to a gradient placeholder,
+   which is visually indistinguishable from "no art found" — so this fails
+   silently. **Batch 1.**
+2. **The fill loop never terminates cleanly.** `ArtworkKind::Icon` is in
+   `ALL` but no provider supplies it and no UI sets it, so `missing` is never
+   empty and the full provider chain re-runs for every game on every scan —
+   including 3 CDN HEAD requests per Steam game, forever. Fix is the
+   terminal `skipped` state (already permitted by 0006's CHECK). **Batch 5.**
+3. **No rate limiting.** No concurrency cap, no inter-request delay, no
+   backoff persisted across runs. A 500-game first scan issues ~500
+   `appdetails` GETs plus ~1,500 HEADs as fast as the loop runs, against an
+   undocumented Valve endpoint. **Batch 5.**
+4. **`mark_artwork_failed` over-reports.** On `Lookup::Permanent` it loops
+   every remaining `missing` kind, recording failures against kinds the
+   provider never attempted. **Batch 5.**
+5. **The fill blocks the scan IPC.** See the ❌ goal above. **Batch 6.**
+6. **`etag` is always written as `None`** — the column exists, conditional
+   refresh does not. **Batch 5.**
+7. **`metadata_source = 'manual'` is unreachable.** The never-clobber guard
+   for *text* metadata has no writer, because no manual-edit path exists
+   yet. **Batch 5 / Batch 12.**
+8. **Zero tests.** The subsystem is ~1,100 lines with no coverage.
+   **Batch 9.**
 
 ### Follow-on roadmap (not yet scheduled)
 - Additional scanners: GOG, Xbox, Ubisoft, Battle.net (stubs noted in `scanner/mod.rs`; `sources` table already seeded).
@@ -150,6 +223,21 @@ Validation at ship: `cargo check`, `cargo clippy --all-targets -- -D warnings`, 
 ## 7. Hard Constraints Future Work MUST Follow
 
 1. **Migrations are immutable.** Never edit an existing migration; only add new `000N_*.sql` files. The comment "GameVault schema v1" in `0001_init.sql` and any `GameVault`/`gamevault` identifier inside migrations must stay.
+   - **One documented exception, now closed.** On 2026-07-25, with explicit
+     user approval, `0006_metadata_artwork.sql` was edited *before* it was
+     ever committed or shipped: `CHECK` constraints were added to `kind`,
+     `state` and `user_locked`, and the redundant `idx_artwork_game` index
+     was removed (the implicit index behind `UNIQUE(game_id, kind)` already
+     covers `WHERE game_id = ?`, verified with `EXPLAIN QUERY PLAN`). The
+     reasoning: SQLite cannot add a constraint via `ALTER`, so a CHECK
+     omitted at creation costs a full table rebuild later, and nothing had
+     shipped yet. Editing it invalidated sqlx's recorded checksum, so the
+     local dev DB was rebuilt from the migrations with its rows copied
+     across (203 rows preserved; backup kept beside it as
+     `gamevault.db.pre-0006-edit-*.bak`).
+   - **This exception does not generalise.** Now that `0006` is committed,
+     treat all six migrations as frozen. Any further schema change is a new
+     `0007_*.sql`.
 2. **Do NOT rename compatibility-sensitive identifiers** during any rebrand/refactor: crate names, package identifiers, environment variable names (e.g. `GAMEVAULT_EPIC_MANIFESTS_DIR`), and the **database filename `gamevault.db`** (`state.rs`). These are load-bearing for existing installs. Branding changes are user-facing strings/comments only.
 3. **Privacy-first / offline by default.** No network access unless the user opts in. The metadata milestone must gate all network calls behind an explicit enabled setting (there's already an `offline_mode` setting seeded in `0001`).
 4. **Background work must never block scans or launches.** Spawn via `tauri::async_runtime::spawn`; communicate via the event bus. Mirror the existing post-scan integrity sweep pattern (best-effort, failures logged, never fail the user's action).

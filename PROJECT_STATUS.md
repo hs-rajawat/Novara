@@ -1,7 +1,14 @@
 # Project Status
 
-**Date:** 2026-07-15
-**Build:** `cargo check` PASS · `cargo clippy` PASS (0 warnings) · `npm run build` PASS · `npm run tauri:dev` PASS (no runtime panic)
+**Date:** 2026-07-25
+**HEAD:** `26795b9` (Metadata & Artwork subsystem)
+**Build:** `cargo check` PASS · `npm run build` PASS · `npm run tauri build` **NEVER RUN**
+
+> **Read this first.** An audit on 2026-07-25 found that this file
+> materially overstated completeness. The "Estimated Completion" figures
+> below have been revised, and a Known Issues section has been added. A
+> feature being *implemented* is no longer recorded as *working* unless it
+> has been verified end to end at runtime.
 
 ---
 
@@ -12,7 +19,7 @@
 | `cargo check` | ✅ PASS | 0 warnings, 0 errors |
 | `cargo clippy` | ✅ PASS | 0 warnings, 0 errors |
 | `npm run build` | ✅ PASS | 1 chunk-size warning (pre-existing, ~586 kB), 0 errors |
-| `npm run tauri build` | Not yet run | Full packaging not validated |
+| `npm run tauri build` | ❌ **NEVER RUN** | Release packaging has never been validated. `panic = "abort"`, LTO and `strip` are all unexercised, and the release CSP behaves differently from dev. Release-gate item (remediation Batch 10) |
 
 ---
 
@@ -22,8 +29,10 @@
 
 | Feature | Location | Notes |
 |---------|----------|-------|
-| SQLite database + migrations | `src-tauri/src/db/` | WAL mode, FK enforcement, connection pool; 5 migrations |
+| SQLite database + migrations | `src-tauri/src/db/` | WAL mode, FK enforcement, connection pool; **6 migrations** |
 | Steam library scanner | `src-tauri/src/scanner/steam.rs` | Reads `libraryfolders.vdf` + ACF manifests; multi-library |
+| Epic Games scanner | `src-tauri/src/scanner/epic.rs` | Parses `%PROGRAMDATA%\Epic\...\Manifests\*.item`; `locate()` is launcher-authoritative; Windows-only |
+| Metadata & artwork subsystem | `src-tauri/src/metadata/` | Provider abstraction, identity resolution (app-id first), `steam_local` / `steam_cdn` / `epic_catalog` providers, `artwork_assets` provenance ledger, per-provider circuit breakers, opt-in `metadata_enabled` gate. **Fetching works; rendering does not — see Known Issues** |
 | Manual folder scanner | `src-tauri/src/scanner/manual.rs` | Depth-3 walk, exe detection, size computation |
 | Scanner orchestrator | `src-tauri/src/scanner/mod.rs` | Parallel execution, dedup via upsert, scan audit log |
 | Library Integrity System | `src-tauri/src/integrity/` | Source-aware install-status resolution (Steam manifest `StateFlags` + generic exe/dir check); reused `SteamContext` per sweep; startup + periodic (5 min) verifier; post-scan reconciliation; launch-time recheck + missing-state launch guard; non-destructive Remove/Restore + Locate Executable recovery; background tasks spawned via `tauri::async_runtime::spawn` |
@@ -67,7 +76,8 @@
 
 | Feature | Status | What works | What's missing |
 |---------|--------|-----------|----------------|
-| Game metadata | Backend trait + offline stub | `MetadataProvider` async trait defined; `OfflineProvider` returns `None` | No live provider (IGDB/RAWG); auto-fetch not wired |
+| Game metadata | Implemented, rendering blocked | Provider abstraction, Steam/Epic providers, artwork ledger, opt-in gate | Artwork does not render (asset protocol disabled); fill loop never terminates; no rate limiting; no tests |
+| Idle tracking | Backend only, unreachable | `report_idle` implemented; `idle_threshold_seconds` seeded | `report_idle` is **not registered** as a Tauri command and the threshold has no reader, so `idle_seconds` is always 0 — the "active vs total time" schema goal does not exist yet |
 | Genre tracking | Schema + aggregation | `genres` and `game_genres` tables; `top_genres` surfaced in dashboard and rendered | No UI to assign genres; scanners do not populate genre data |
 | Multi-user profiles | Schema only | `profiles` table seeded with "Default" profile | No UI, no profile switching |
 | Save glob filter | Schema only | `glob` column in `save_profiles` | `write_archive` does not apply the filter |
@@ -79,12 +89,11 @@
 
 | Feature | Location | Notes |
 |---------|----------|-------|
-| Mods page | `src/pages/Mods.tsx` | Renders "Mod tracking — coming next"; `mods` table schema ready |
+| Mods page | `src/pages/Mods.tsx` | Renders developer-facing placeholder copy (should be user-facing — remediation 8.11); `mods` table schema ready |
 | Mod backend commands | — | No Tauri commands for mod CRUD |
-| Epic Games scanner | `src-tauri/src/scanner/` (commented) | Stub present; not implemented |
 | GOG scanner | `src-tauri/src/scanner/` (commented) | Stub present; not implemented |
 | Xbox / MS Store scanner | `src-tauri/src/scanner/` (commented) | Stub present; not implemented |
-| Live metadata provider | `src-tauri/src/metadata/` | IGDB/RAWG stubs; only offline no-op exists |
+| Third-party metadata providers | `src-tauri/src/metadata/providers/` | IGDB / RAWG / SteamGridDB not implemented. The abstraction is ready for them; the shipped providers are Steam and Epic only |
 | Media/screenshots | DB schema only | `media` table in schema; no commands, no UI |
 | Achievement templates | DB schema only | `achievement_templates` table; no commands, no UI |
 
@@ -107,31 +116,58 @@
 | `mods` | ✅ | — | — |
 | `profiles` | ✅ | — (seeded) | — |
 | `settings` | ✅ | ✅ | ✅ |
-| `scan_runs` | ✅ | ✅ (write) | — |
+| `scan_runs` | ✅ | ✅ (write) | — (never read; no scan history UI) |
+| `artwork_assets` | ✅ (0006) | ✅ (ledger + ownership guard) | — (read indirectly via `games.*_path`) |
 
 ---
 
 ## Estimated Completion
 
-| Layer | % Complete |
-|-------|-----------|
-| Database schema | 100% |
-| Rust backend — core infrastructure | 100% |
-| Rust backend — scanners | 40% (Steam + Manual done; Epic/GOG/Xbox missing) |
-| Rust backend — save manager | 100% |
-| Rust backend — save detection | 100% |
-| Rust backend — cover art | 100% |
-| Rust backend — playtime | 95% |
-| Rust backend — achievements | 85% |
-| Rust backend — metadata | 5% |
-| Rust backend — mods | 0% |
-| Frontend — core / layout | 100% |
-| Frontend — library (search + sort + cover) | 100% |
-| Frontend — game details (hero + artwork pickers) | 100% |
-| Frontend — dashboard (cover art + genres + refresh) | 100% |
-| Frontend — save manager (detection + badges + delete) | 100% |
-| Frontend — mods page | 0% |
-| **Overall** | **~88%** |
+> Revised 2026-07-25. Previous figures counted code written rather than
+> behaviour verified, which is how "cover art 100%" coexisted with artwork
+> that never rendered. A layer is only 100% if it has been exercised at
+> runtime and has tests.
+
+| Layer | % Complete | Note |
+|-------|-----------|------|
+| Database schema | 100% | 6 migrations, CHECK-constrained where sets are closed |
+| Rust backend — core infrastructure | 95% | No graceful shutdown; open play sessions are never closed |
+| Rust backend — scanners | 55% | Steam + Epic + Manual done; GOG/Xbox/Ubisoft/Battle.net/emulator missing |
+| Rust backend — save manager | 80% | Restore has a path-construction bug on dotted folder names; displaced saves are never cleaned up; `glob` filter accepted and ignored |
+| Rust backend — save detection | 95% | `dedup_by` only removes adjacent duplicates |
+| Rust backend — artwork & metadata | 70% | Fetching works; rendering blocked, loop non-terminating, unthrottled, untested |
+| Rust backend — playtime | 60% | Steam/launcher sessions record as 0–5 s; no graceful shutdown; process matching by bare basename |
+| Rust backend — achievements | 85% | No template import, no Steam sync |
+| Rust backend — mods | 0% | Schema only |
+| Frontend — core / layout | 90% | No error boundary, no modal system, listener leaks |
+| Frontend — library | 95% | `<button>` nested in `<Link>` on the primary control |
+| Frontend — game details | 90% | No icon artwork slot despite complete backend |
+| Frontend — dashboard | 85% | `dashboard_stats` fails outright on an empty library |
+| Frontend — save manager | 90% | Silent no-op when a profile label is empty |
+| Frontend — analytics | 85% | Heatmap is UTC-keyed against local grid bounds — off by one day east of UTC |
+| Frontend — mods page | 0% | Placeholder |
+| **Test coverage** | **~10%** | 15 Rust tests, all in `integrity/` and `scanner/epic.rs`. Zero for `db/*`, zero for `metadata/*`, zero frontend tests |
+| **Release readiness** | **0%** | `tauri build` never run; placeholder icons |
+| **Overall** | **~78%** | Feature-complete-looking, not release-ready |
+
+---
+
+## Known Issues
+
+Full classification lives in the remediation plan. Highest-severity items:
+
+| # | Issue | Batch |
+|---|---|---|
+| 1 | Tauri asset protocol disabled + CSP scheme mismatch — **no artwork renders at all**, silently | 1 |
+| 2 | `dashboard_stats` decodes `NULL` into `i64` — command **fails on every fresh install** | 3 |
+| 3 | `merge_games` violates `game_genres` PK when both games share a genre — whole merge rolls back | 3 |
+| 4 | `merge_games` does not reparent `artwork_assets` — cascade destroys the losing game's ledger | 3 |
+| 5 | Steam sessions die within 5 s of launch — corrupts all playtime, analytics and "last played" | 4 |
+| 6 | `ArtworkKind::Icon` unsatisfiable — fill loop re-runs the full provider chain every scan, unthrottled | 5 |
+| 7 | Save restore mis-constructs sibling paths for folders containing dots | 7 |
+| 8 | Displaced save directories accumulate forever after every restore | 7 |
+| 9 | Pre-restore safety backup failure is swallowed — restore proceeds without an undo path | 7 |
+| 10 | Failures are invisible app-wide: `catch {}`, `console.error`, `unwrap_or_default()` on query errors | 2 |
 
 ---
 
@@ -173,9 +209,21 @@
 - ✅ Save detection: heuristic search across 6 OS locations; results panel with "Use this path"
 - ✅ Save profiles: Auto/Manual badge; delete button; `is_manual_override` column
 
-## Recommended Next (Phase 2)
+## Recommended Next
 
-1. **Mods CRUD** — Schema + stub are ready. Add ~200 lines Rust + ~150 lines TypeScript.
-2. **Epic Games Store scanner** — Parse `%PROGRAMDATA%\Epic\EpicGamesLauncher\Data\Manifests\*.item` JSON.
-3. **Bundle size reduction** — Vite `manualChunks` to split Recharts below 500 kB.
-4. **GOG Galaxy scanner** — Read `%PROGRAMDATA%\GOG.com\Galaxy\storage\galaxy.db`.
+Pre-release remediation, in dependency order (not severity order). Batch 0
+(repository truth + test harness) is complete.
+
+1. **Batch 1 — asset protocol.** One config change; unblocks all visual verification.
+2. **Batch 2 — error surface.** Error boundary, error→message mapping, stop swallowing IPC failures.
+3. **Batch 3 — data-correctness bugs.** `dashboard_stats` NULL decode, `merge_games` genre PK and artwork reparenting, unscoped installation DELETE, unified primary-installation rule.
+4. **Batch 4 — playtime integrity.** Watch processes under the install directory; graceful shutdown; repair orphaned sessions.
+5. **Batch 5 — artwork pipeline.** Terminal `skipped` state, concurrency cap, delay, persisted backoff, icon UI slot.
+6. **Batch 6 — async hygiene.** Background the scan, coalesce events, move blocking I/O off the async threads.
+7. **Batch 7 — save manager safety.**
+8. **Batch 8 — DESIGN.md conformance.**
+9. **Batch 9 — test backfill + a test proving zero network calls when metadata is off.**
+10. **Batch 10 — release gate.** First-ever `tauri build`, real icons.
+
+Feature work (mods CRUD, GOG scanner, bundle split, third-party providers)
+resumes after the release gate.

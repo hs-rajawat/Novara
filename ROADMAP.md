@@ -149,7 +149,43 @@ npm run typecheck  # → no output (pass)
 
 ---
 
-## Phase 2 — Mods Management & Additional Scanners ← **CURRENT PHASE**
+## Metadata & Artwork ✅ COMPLETE (2026-07-25, `26795b9`)
+
+**Automatic metadata and artwork fetching, privacy-gated and provider-agnostic.**
+
+- ✅ Provider abstraction with identity resolution (source app-id first, title fallback)
+- ✅ `steam_local` provider — copies from Steam's own `librarycache`, zero network
+- ✅ `steam_cdn` and `epic_catalog` providers
+- ✅ `artwork_assets` provenance/refresh ledger (migration `0006`) with a
+      SQL-level ownership guard: no provider may overwrite another
+      provider's asset or a user-locked one
+- ✅ `logo_path` as a fourth artwork kind alongside cover/hero/icon
+- ✅ Local artwork store under `<app_data>/artwork/<game_id>/`, reusing the
+      convention established by manual artwork picking
+- ✅ Opt-in `metadata_enabled` setting, off by default, checked alongside
+      the global `offline_mode` kill-switch
+- ✅ Per-provider circuit breakers in both fill services
+
+**Known issues at ship, tracked in the remediation plan:** the Tauri asset
+protocol is not enabled so fetched artwork does not render (Batch 1);
+`ArtworkKind::Icon` has no provider, leaving the fill loop
+non-terminating and re-issuing CDN requests every scan (Batch 5); the
+post-scan fill runs inline and blocks the scan IPC (Batch 6).
+
+---
+
+## Pre-Release Remediation ← **CURRENT PHASE**
+
+Audit-driven hardening before first release. Sequenced in 13 batches,
+dependency-ordered rather than severity-ordered. Batch 0 (repository
+truth + test harness) is complete; the release gate is Batch 10
+(`tauri build`, which has never been run, plus real application icons).
+
+Phases 2 and 3 below resume after that gate.
+
+---
+
+## Phase 2 — Mods Management & Additional Scanners
 
 **Goal:** Expand source coverage beyond Steam/Manual and deliver the mods workflow that is already stubbed in the UI and schema.
 
@@ -159,15 +195,21 @@ npm run typecheck  # → no output (pass)
 |---------|---------------|
 | Mods backend — CRUD commands | Tauri commands: add mod, toggle enabled, set load_order, delete; maps to `mods` table |
 | Mods page — list UI | Replace placeholder text with mod list, enable/disable toggle, load-order drag or up/down arrows |
-| Epic Games Store scanner | Parse `C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests\*.item` JSON; extract `InstallLocation`, `DisplayName`, `CatalogItemId` |
 | GOG Galaxy scanner | Parse `C:\ProgramData\GOG.com\Galaxy\storage\galaxy-2.0.db` (SQLite) or manifest JSON under `%PROGRAMDATA%\GOG.com` |
 | Bundle size reduction | Vite `manualChunks` splitting Recharts and React Router into separate chunks |
 
+> The **Epic Games Store scanner shipped in `2586c00`** (with launcher
+> reliability follow-ups in `c021c0b` and `3d0c0fd`) and is no longer part of
+> this phase. Use `scanner/epic.rs` as the reference implementation for GOG:
+> it is a pure filesystem leaf with no `Db` or bus dependency, which is what
+> lets `integrity` depend on it without a cycle.
+
 ### Dependencies
 
-- `serde_json` already present (Epic JSON parsing)
+- `serde_json` already present
 - `sqlx` already present (GOG SQLite parsing)
-- No new Rust crates required for Epic; GOG may require reading an SQLite file at an arbitrary path (already supported by `sqlx` + `tauri-plugin-fs`)
+- No new Rust crates required; GOG needs to read an SQLite file at an
+  arbitrary path, already supported by `sqlx` + `tauri-plugin-fs`
 
 ### Estimated Effort
 
@@ -175,15 +217,13 @@ npm run typecheck  # → no output (pass)
 |------|--------|
 | Mods backend commands | ~200 lines Rust |
 | Mods page UI | ~150 lines TypeScript |
-| Epic Games scanner | ~120 lines Rust |
 | GOG scanner | ~150 lines Rust |
 | Bundle split (Vite config) | ~15 lines config |
-| **Total** | **~635 lines** |
+| **Total** | **~515 lines** |
 
 ### Success Criteria
 
 - Mods page shows a real list; mods can be toggled enabled/disabled.
-- Scanning with Epic Games installed discovers titles and populates the library.
 - Scanning with GOG Galaxy installed discovers titles.
 - JS bundle main chunk is below the Vite 500 kB soft limit.
 - `cargo check` passes with 0 errors; `npm run build` passes with 0 warnings.
@@ -197,47 +237,80 @@ cargo check
 # Bundle chunk sizes
 npm run build 2>&1 | Select-String "kB"
 
-# Epic scan (requires Epic installed)
+# GOG scan (requires GOG Galaxy installed)
 npm run tauri:dev
-# Trigger scan from Settings page, verify Epic games appear in Library
+# Trigger scan from Settings page, verify GOG games appear in Library
 ```
 
 ---
 
-## Phase 3 — Live Metadata & Media
+## Phase 3 — Additional Providers & Media
 
-**Goal:** Enrich the library with cover art, release years, and developer info from a live metadata provider, and surface the `media` table for screenshots.
+**Goal:** Extend the metadata/artwork subsystem that shipped in
+`26795b9` with third-party providers, surface genres as a filter, and
+expose the `media` table for screenshots.
+
+> **What already shipped** (`26795b9`, migration `0006`): the provider
+> abstraction, identity resolution, per-asset provenance ledger
+> (`artwork_assets`), local artwork store, and three working providers —
+> `steam_local` (zero-network, copies from Steam's own `librarycache`),
+> `steam_cdn`, and `epic_catalog`. Text and artwork fill run as separate
+> services with per-provider circuit breakers.
+>
+> Plan against that abstraction, **not** the superseded design this section
+> used to describe. Two specifics that changed:
+> - There is no `metadata_api_key` setting. The gate is `metadata_enabled`
+>   (seeded `false` in `0006`), and it is checked **in addition to** the
+>   global `offline_mode` kill-switch from `0001`. A provider fetches only
+>   when both allow it.
+> - Artwork is not written straight to `games.cover_path` by providers.
+>   They go through `Db::upsert_artwork_ready`, whose SQL-level ownership
+>   guard prevents one provider clobbering another's asset or any
+>   `user_locked` asset. New providers must use it rather than writing the
+>   `games.*_path` columns directly.
 
 ### Features
 
 | Feature | What's needed |
 |---------|---------------|
-| Live metadata provider | Implement `MetadataProvider` trait for IGDB or RAWG; fetch cover art, release year, developer, publisher, genres; store result in `games.metadata_json` and `games.cover_path` (manual cover picking already done) |
-| API key setting | Add metadata provider key field to Settings page; persist in `settings` table under `metadata_api_key` |
-| Genre assignment | After metadata fetch, populate `genres` + `game_genres` tables; expose genre filter tab in Library (genre display in Dashboard already done) |
-| Media / screenshots | Tauri commands for `media` table CRUD; UI on GameDetails to browse screenshots |
+| SteamGridDB provider | Highest-value addition: purpose-built for covers/heroes/logos, and fills the gap for non-Steam titles. Implement the shipped artwork provider trait; needs a user-supplied API key |
+| IGDB or RAWG provider | Text metadata beyond what the Steam store API returns — release year, developer, publisher, genres for non-Steam titles. IGDB needs a Twitch Client ID + Secret (OAuth 2 M2M); RAWG needs a free key |
+| Per-provider API key settings | Settings surface for the above. Store per provider (e.g. `provider_key_steamgriddb`), not one shared `metadata_api_key` |
+| Genre assignment UI + filter | `set_game_metadata` already populates `genres`/`game_genres` for Steam titles; needs a manual assignment surface and a Library genre filter |
+| Media / screenshots | Tauri commands for `media` table CRUD; gallery UI on GameDetails |
 
 ### Dependencies
 
-- `reqwest` already in `Cargo.toml` (feature-gated behind `http`)
-- IGDB requires a Twitch Client ID + Secret (OAuth 2 machine-to-machine); RAWG requires a free API key
-- No schema changes required (columns and tables already present)
+- `reqwest` already wired and used by the shipped providers
+- Batch 5 of the remediation plan should land first: it settles the fill
+  loop's termination condition (`skipped` state) and adds the concurrency
+  cap, delay and persisted backoff. Adding providers before that
+  multiplies the existing repeat-traffic problem across more endpoints.
+- A key-bearing provider needs a decision on key storage. Keys in the
+  plain `settings` table are readable by anything with filesystem access;
+  this is the first feature that would justify the encryption work
+  currently claimed but unimplemented in the README.
 
 ### Estimated Effort
 
 | Task | Effort |
 |------|--------|
-| IGDB or RAWG provider implementation | ~250 lines Rust |
-| API key settings UI | ~60 lines TypeScript |
-| Genre population + Library filter | ~80 lines Rust + ~50 lines TypeScript |
+| SteamGridDB provider | ~200 lines Rust |
+| IGDB or RAWG provider | ~250 lines Rust |
+| Per-provider key settings UI | ~90 lines TypeScript |
+| Genre assignment UI + Library filter | ~80 lines Rust + ~70 lines TypeScript |
 | Media CRUD commands | ~150 lines Rust |
 | Media gallery UI on GameDetails | ~180 lines TypeScript |
-| **Total** | **~770 lines** |
+| **Total** | **~1,020 lines** |
 
 ### Success Criteria
 
-- Running "Fetch metadata" on a game with an API key configured populates cover art, release year, and genres.
-- `GameCard` shows cover images instead of initials for enriched games.
+- With `metadata_enabled` on and a key configured, a non-Steam title
+  receives cover, hero and logo artwork.
+- With `metadata_enabled` off **or** `offline_mode` on, no provider issues
+  a network request (asserted by test, not by inspection).
+- A new provider cannot overwrite artwork a user set manually, or artwork
+  another provider already supplied.
 - Genre filter tab in Library filters correctly.
 - Screenshots can be added, viewed, and deleted from GameDetails.
 

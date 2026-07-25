@@ -28,6 +28,11 @@ pub mod scanner;
 pub mod sources;
 pub mod state;
 
+/// Shared test fixtures. Compiled only for `cargo test`, so it adds nothing
+/// to the shipped binary.
+#[cfg(test)]
+pub mod test_support;
+
 use std::sync::Arc;
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;

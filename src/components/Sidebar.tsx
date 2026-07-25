@@ -35,7 +35,7 @@ export function Sidebar() {
           <Icon name="gamepad" size={18} />
         </span>
         <span>
-          Game<span className="brand-grad">Vault</span>
+          NOVA<span className="brand-grad">RA</span>
         </span>
       </div>
 

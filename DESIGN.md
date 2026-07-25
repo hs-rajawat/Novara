@@ -303,7 +303,12 @@ NOVARA uses an inline, dependency-free stroke icon system based on modern 24×24
 ### 16.2 Search Bar Control
 - Fully rounded pill shape (`999px`).
 - Expands smoothly on focus with standard ease-out motion.
-- Houses search icon left and keyboard shortcut hint `<kbd>` right (`Ctrl+K`).
+- Houses search icon left and keyboard shortcut hint `<kbd>` right (`/`).
+  A single-key hint is used deliberately in place of a chorded shortcut:
+  NOVARA has no competing text-entry surface at the app level, so `/`
+  reaches search in one keystroke and matches the convention users know
+  from Steam, Discord and the browser. Implementations must ignore `/`
+  while focus is inside an input, textarea or contenteditable element.
 
 ### 16.3 Toggles & Checkboxes
 - **Custom Checkbox:** Rounded container with small radius token. Active state fills with primary brand gradient and displays spring-animated checkmark.
@@ -360,7 +365,13 @@ The Game Details page offers a rich visual layout for individual titles:
 
 - **Hero Banner Area:** Cinematic horizontal banner aspect ratio (`21 / 9`), overlaid with dark bottom gradient scrim for title readability.
 - **Overlapping Cover Art:** Vertical cover (`2 / 3` ratio) overlaps the hero banner bottom edge smoothly to create visual depth.
-- **Title Block & Primary CTAs:** Clear typographic hierarchy displaying large game title (30px ExtraBold), platform badge, completion status dropdown, and primary Play CTA button.
+- **Title Block & Primary CTAs:** Clear typographic hierarchy displaying large game title (30px ExtraBold), platform badge, completion status control, and primary Play CTA button.
+- **Completion Status Control:** A segmented tab group, not a dropdown. The
+  five completion states are a small, fixed, mutually exclusive set, so
+  surfacing them inline makes the current state readable at a glance and
+  reachable in one click. This also reuses the segmented-control treatment
+  already specified for Layer 3 elevation (§8) and the library filter strip
+  (§20), keeping one visual language for "pick one of a few".
 
 ---
 
