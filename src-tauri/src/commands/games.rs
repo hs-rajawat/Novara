@@ -195,9 +195,11 @@ pub async fn update_notes(
 #[tauri::command]
 pub async fn launch_game(game_id: String, state: State<'_, Arc<AppState>>) -> AppResult<()> {
     let installs = state.db.list_installations(&game_id).await?;
-    let install = installs
-        .into_iter()
-        .max_by_key(|i| i.is_primary)
+    // Same rule the UI's status queries use (health first, `is_primary` only
+    // as a tie-break) so Play cannot target a different installation than the
+    // one whose status is on screen.
+    let install = crate::db::games::primary_installation(&installs)
+        .cloned()
         .ok_or_else(|| AppError::NotFound("no installation found for this game".into()))?;
 
     let source_code = state.db.source_code_for(install.source_id).await?;
@@ -222,12 +224,9 @@ pub async fn launch_game(game_id: String, state: State<'_, Arc<AppState>>) -> Ap
             game_id: game_id.clone(),
         });
         // Re-read so the launch below uses the new directory.
-        state
-            .db
-            .list_installations(&game_id)
-            .await?
-            .into_iter()
-            .max_by_key(|i| i.is_primary)
+        let installs = state.db.list_installations(&game_id).await?;
+        crate::db::games::primary_installation(&installs)
+            .cloned()
             .ok_or_else(|| AppError::NotFound("no installation found for this game".into()))?
     } else {
         install

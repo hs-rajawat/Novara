@@ -22,6 +22,9 @@ pub mod playtime;
 pub mod saves;
 pub mod settings;
 
+#[cfg(test)]
+mod games_tests;
+
 #[derive(Clone)]
 pub struct Db {
     pub pool: SqlitePool,

@@ -33,23 +33,37 @@ pub struct GenreCount {
     pub count: i64,
 }
 
+/// The four scalar library totals, extracted from `dashboard_stats` so the
+/// aggregate can be tested against an empty database — the exact case that
+/// used to fail.
+///
+/// Every aggregate is COALESCE'd. On an empty `games` table SQLite's SUM()
+/// returns NULL, which cannot decode into i64, so this command failed outright
+/// on every fresh install and the Dashboard stayed blank until the first game
+/// existed. COUNT(*) is the only aggregate here that is already NULL-safe.
+pub(crate) async fn library_totals(
+    pool: &sqlx::SqlitePool,
+) -> AppResult<(i64, i64, i64, i64)> {
+    Ok(sqlx::query_as(
+        r#"
+        SELECT
+          COUNT(*),
+          COALESCE(SUM(CASE WHEN completion_state = 'completed' THEN 1 ELSE 0 END), 0),
+          COALESCE(SUM(total_playtime_seconds), 0),
+          COALESCE(SUM(is_favorite), 0)
+        FROM games
+        "#,
+    )
+    .fetch_one(pool)
+    .await?)
+}
+
 #[tauri::command]
 pub async fn dashboard_stats(state: State<'_, Arc<AppState>>) -> AppResult<DashboardStats> {
     let db = &state.db.pool;
 
-    let (total_games, completed_games, total_playtime_seconds, favorite_count): (i64, i64, i64, i64) =
-        sqlx::query_as(
-            r#"
-            SELECT
-              COUNT(*),
-              SUM(CASE WHEN completion_state = 'completed' THEN 1 ELSE 0 END),
-              COALESCE(SUM(total_playtime_seconds), 0),
-              SUM(is_favorite)
-            FROM games
-            "#,
-        )
-        .fetch_one(db)
-        .await?;
+    let (total_games, completed_games, total_playtime_seconds, favorite_count) =
+        library_totals(db).await?;
 
     let recently_played: Vec<RecentGame> = sqlx::query_as(
         r#"

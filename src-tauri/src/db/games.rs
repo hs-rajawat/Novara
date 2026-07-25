@@ -23,6 +23,36 @@ const STATUS_PRIORITY_ORDER: &str = "CASE gi.status \
      WHEN 'deleted' THEN 3 \
      ELSE 4 END";
 
+/// Rank an install status the same way [`STATUS_PRIORITY_ORDER`] does in SQL.
+///
+/// The two must agree. They previously did not: every "which installation
+/// represents this game" *query* used the health-first CASE below, while
+/// `launch_game` picked with `max_by_key(|i| i.is_primary)` — so Play could
+/// act on a different installation than the one whose status the UI was
+/// showing, which is precisely the confusion the ghost-row handling in
+/// `upsert_game` exists to prevent.
+fn status_rank(status: &str) -> u8 {
+    match status {
+        "installed" => 0,
+        "offline" => 1,
+        "missing" => 2,
+        "deleted" => 3,
+        _ => 4,
+    }
+}
+
+/// Pick the installation that represents a game, in Rust, matching
+/// [`STATUS_PRIORITY_ORDER`] exactly: healthiest status first, then the
+/// `is_primary` flag as the tie-break.
+///
+/// Health outranks the flag deliberately — a stale `is_primary` ghost must
+/// never win over a live install.
+pub fn primary_installation(installs: &[Installation]) -> Option<&Installation> {
+    installs
+        .iter()
+        .min_by_key(|i| (status_rank(&i.status), if i.is_primary != 0 { 0 } else { 1 }))
+}
+
 #[derive(Debug, Clone)]
 pub struct UpsertGame<'a> {
     pub title: &'a str,
@@ -89,11 +119,24 @@ impl Db {
             .ok_or_else(|| AppError::Invalid(format!("unknown source: {}", input.source_code)))?;
 
         // 2. Look for an existing installation that matches.
+        //
+        // The launcher's app-id is authoritative and must outrank an
+        // `install_dir` coincidence. Without the explicit ORDER BY, this was
+        // `... WHERE install_dir = ? OR (source + app_id) LIMIT 1` with no
+        // ordering, so when a *different* game's row already occupied the
+        // directory now being scanned, SQLite could return that game — and
+        // this scan would then be attributed to it. That contradicts the
+        // documented rule ("keyed off (source, source_app_id) first, falling
+        // back to install_dir") and was the mechanism by which a launcher
+        // move could damage an unrelated game's installation record.
         let existing: Option<(String,)> = sqlx::query_as(
             r#"
             SELECT game_id FROM game_installations
-            WHERE install_dir = ?1
-               OR (source_id = ?2 AND source_app_id IS NOT NULL AND source_app_id = ?3)
+            WHERE (source_id = ?2 AND source_app_id IS NOT NULL AND source_app_id = ?3)
+               OR install_dir = ?1
+            ORDER BY
+              CASE WHEN source_id = ?2 AND source_app_id IS NOT NULL AND source_app_id = ?3
+                   THEN 0 ELSE 1 END
             LIMIT 1
             "#,
         )
@@ -125,6 +168,11 @@ impl Db {
             (id, true)
         };
 
+        // Set when the directory being scanned is already registered to a
+        // different game, which makes both the in-place relink and the
+        // installation upsert unsafe.
+        let mut destination_claimed_by_other = false;
+
         // 3a. Move detection (launcher-managed sources). When this game
         // already has an installation row matched by (source, source_app_id)
         // but at a *different* directory than the one now being scanned, the
@@ -151,17 +199,79 @@ impl Db {
             .await?;
 
             if let Some((moved_id, _old_dir)) = moved_row {
-                // Drop any row that already occupies the destination dir (a
-                // prior ghost), then move the canonical row onto it.
-                sqlx::query("DELETE FROM game_installations WHERE install_dir = ?1")
-                    .bind(input.install_dir)
-                    .execute(&mut *tx)
-                    .await?;
-                sqlx::query("UPDATE game_installations SET install_dir = ?1 WHERE id = ?2")
-                    .bind(input.install_dir)
-                    .bind(&moved_id)
-                    .execute(&mut *tx)
-                    .await?;
+                // Clear the destination first, but only of rows this move is
+                // entitled to remove: a ghost of this same launcher identity,
+                // or a row already belonging to this same game.
+                //
+                // `idx_install_dir` is UNIQUE across the whole table, so the
+                // row sitting at the destination may belong to a *different*
+                // game. Deleting it unconditionally — as this did — silently
+                // destroyed that game's installation record and its manual
+                // executable override.
+                //
+                // The decision is made in Rust rather than in the `WHERE`
+                // clause on purpose. Expressing it in SQL requires comparing
+                // `source_app_id`, which is NULL for every manual
+                // installation, and in SQL `NULL = '123'` is NULL rather than
+                // false — so `NOT (source_id = ? AND source_app_id = ?)`
+                // evaluates to NULL and silently matches nothing. That is
+                // precisely the trap that made the first version of this fix
+                // look correct while still deleting the other game's row.
+                let occupants: Vec<(String, String, i64, Option<String>)> = sqlx::query_as(
+                    r#"
+                    SELECT id, game_id, source_id, source_app_id
+                    FROM game_installations
+                    WHERE install_dir = ?1 AND id <> ?2
+                    "#,
+                )
+                .bind(input.install_dir)
+                .bind(&moved_id)
+                .fetch_all(&mut *tx)
+                .await?;
+
+                // A row may be cleared only when it is this same game's, or a
+                // ghost carrying this exact launcher identity.
+                let may_clear = |game: &str, src: i64, app: Option<&str>| {
+                    game == game_id || (src == source_id && app == Some(app_id))
+                };
+                let foreign = occupants
+                    .iter()
+                    .find(|(_, g, src, app)| !may_clear(g, *src, app.as_deref()));
+
+                if let Some((_, other_game, _, _)) = foreign {
+                    // Two different games claiming one folder is a
+                    // duplicate-detection question, not a move — and
+                    // resolving it automatically is exactly what Integrity
+                    // Phase 2 defers as too risky. Skip the relink *and* the
+                    // installation upsert below, and leave both rows intact.
+                    //
+                    // Skipping step 4 matters: its `ON CONFLICT(install_dir)
+                    // DO UPDATE` does not reassign `game_id`, so letting it
+                    // run would stamp this game's `source_app_id`, size and
+                    // status onto the other game's row while leaving it
+                    // parented to that other game — corrupting it in place
+                    // instead of deleting it. This game keeps its existing
+                    // row at the old directory; the periodic integrity sweep
+                    // resolves whichever install is genuinely gone.
+                    tracing::warn!(
+                        install_dir = %input.install_dir,
+                        other_game = %other_game,
+                        "skipping move relink: destination is claimed by a different game"
+                    );
+                    destination_claimed_by_other = true;
+                } else {
+                    for (occupant_id, _, _, _) in &occupants {
+                        sqlx::query("DELETE FROM game_installations WHERE id = ?1")
+                            .bind(occupant_id)
+                            .execute(&mut *tx)
+                            .await?;
+                    }
+                    sqlx::query("UPDATE game_installations SET install_dir = ?1 WHERE id = ?2")
+                        .bind(input.install_dir)
+                        .bind(&moved_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
             }
         }
         // 3b. Library Integrity System: resolve this installation's status
@@ -189,6 +299,12 @@ impl Db {
 
         // 4. Upsert the installation row (idempotent on install_dir).
         //
+        // Skipped entirely when the directory is registered to a different
+        // game (see 3a): `ON CONFLICT(install_dir) DO UPDATE` does not
+        // reassign `game_id`, so running it would overwrite that game's
+        // `source_app_id`, size and status while leaving the row parented to
+        // it. Doing nothing keeps both games' records truthful.
+        //
         // On conflict the executable is preserved when the user has manually
         // overridden it (executable_override = 1); scanner-detected values
         // are accepted only when the override flag is 0.
@@ -198,9 +314,10 @@ impl Db {
         // `status` only takes the freshly-resolved value when the existing
         // row is in an auto-managed state (installed/missing); a future
         // manual state (ignored, archived, ...) is left untouched by scans.
-        let install_id = Uuid::new_v4().to_string();
-        sqlx::query(
-            r#"
+        if !destination_claimed_by_other {
+            let install_id = Uuid::new_v4().to_string();
+            sqlx::query(
+                r#"
             INSERT INTO game_installations
               (id, game_id, source_id, install_dir, executable, source_app_id,
                install_size_bytes, is_primary, detected_at, executable_override,
@@ -220,30 +337,33 @@ impl Db {
                             ELSE game_installations.status END,
               last_verified_at = excluded.last_verified_at
             "#,
-        )
-        .bind(install_id)
-        .bind(&game_id)
-        .bind(source_id)
-        .bind(input.install_dir)
-        .bind(input.executable)
-        .bind(input.source_app_id)
-        .bind(input.install_size_bytes)
-        .bind(&now)
-        .bind(input.executable_override as i64)
-        .bind(resolved.as_str())
-        .bind(&now)
-        .execute(&mut *tx)
-        .await?;
+            )
+            .bind(install_id)
+            .bind(&game_id)
+            .bind(source_id)
+            .bind(input.install_dir)
+            .bind(input.executable)
+            .bind(input.source_app_id)
+            .bind(input.install_size_bytes)
+            .bind(&now)
+            .bind(input.executable_override as i64)
+            .bind(resolved.as_str())
+            .bind(&now)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         tx.commit().await?;
 
         // Mirrors the SQL guard above: only "changed" if the row was (or is
-        // now) in an auto-managed state and the resolved value differs.
+        // now) in an auto-managed state and the resolved value differs. A
+        // skipped upsert changed nothing, so it cannot report a change.
         let prev_auto_managed = prev_status
             .as_deref()
             .map_or(true, crate::integrity::is_auto_managed);
-        let status_changed =
-            prev_auto_managed && prev_status.as_deref() != Some(resolved.as_str());
+        let status_changed = !destination_claimed_by_other
+            && prev_auto_managed
+            && prev_status.as_deref() != Some(resolved.as_str());
 
         Ok(UpsertResult {
             game_id_owned: Uuid::parse_str(&game_id)
@@ -399,12 +519,43 @@ impl Db {
             return Err(AppError::NotFound(format!("installation not found: {id}")));
         };
 
-        // Remove any other row occupying the destination before the move.
-        sqlx::query("DELETE FROM game_installations WHERE install_dir = ?1 AND id <> ?2")
-            .bind(new_dir)
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
+        // Clear the destination, but only of rows belonging to this same
+        // game. `idx_install_dir` is UNIQUE table-wide, so an unscoped delete
+        // here would silently destroy a different game's installation.
+        //
+        // This path is user-initiated (Locate Executable / launch-time
+        // relink), so a genuine conflict is reported rather than resolved
+        // silently: the user is the only one who can say which game really
+        // lives in that folder.
+        let foreign: Option<String> = sqlx::query_scalar(
+            "SELECT game_id FROM game_installations \
+             WHERE install_dir = ?1 AND id <> ?2 AND game_id <> ?3 LIMIT 1",
+        )
+        .bind(new_dir)
+        .bind(id)
+        .bind(&game_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(other_game) = foreign {
+            let title: Option<String> =
+                sqlx::query_scalar("SELECT title FROM games WHERE id = ?1")
+                    .bind(&other_game)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            return Err(AppError::Invalid(format!(
+                "that folder is already registered to another game{}",
+                title.map(|t| format!(" ({t})")).unwrap_or_default()
+            )));
+        }
+        sqlx::query(
+            "DELETE FROM game_installations \
+             WHERE install_dir = ?1 AND id <> ?2 AND game_id = ?3",
+        )
+        .bind(new_dir)
+        .bind(id)
+        .bind(&game_id)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query(
             "UPDATE game_installations \
              SET install_dir = ?1, status = 'installed', last_verified_at = ?2 \
@@ -661,13 +812,56 @@ impl Db {
         Ok(())
     }
 
-    /// Merge `from_id` into `to_id`: reparent installations, achievements,
-    /// sessions, saves, mods, media; then delete the source row.
+    /// Merge `from_id` into `to_id`, then delete the source row.
+    ///
+    /// Every table that references `games(id)` is handled here, and the list
+    /// is exhaustive as of migration 0006: `game_installations`,
+    /// `achievements`, `play_sessions`, `save_profiles`, `mods`, `media`,
+    /// `game_genres`, `artwork_assets`.
+    ///
+    /// Three classes of table, handled differently because a blanket
+    /// `UPDATE ... SET game_id` is only correct for the first:
+    ///
+    /// 1. **Surrogate primary key, no per-game uniqueness** — reparented with
+    ///    a plain `UPDATE`. Nothing can collide.
+    /// 2. **Per-game uniqueness constraint** — `game_genres`
+    ///    (`PRIMARY KEY (game_id, genre_id)`) and `artwork_assets`
+    ///    (`UNIQUE(game_id, kind)`). An `UPDATE` here violates the constraint
+    ///    whenever both games share a genre or an artwork kind, which aborts
+    ///    the whole transaction and makes the merge fail outright. These are
+    ///    reparented as "insert what does not collide, then drop the rest",
+    ///    so the survivor's own row always wins.
+    /// 3. **Values cached on `games` rather than derived on read** —
+    ///    `total_playtime_seconds`, `last_played_at` and `completion_pct`.
+    ///    Moving `play_sessions` and `achievements` rows does not update
+    ///    these, so without the explicit fix-up below a merge silently loses
+    ///    the absorbed game's playtime from every screen that reads the
+    ///    cached column.
+    ///
+    /// `artwork_assets` was previously missing from the reparent list
+    /// entirely, so `ON DELETE CASCADE` destroyed the absorbed game's whole
+    /// artwork ledger — including `user_locked` flags recording deliberate
+    /// user choices.
     pub async fn merge_games(&self, from_id: &str, to_id: &str) -> AppResult<()> {
         if from_id == to_id {
             return Err(AppError::Invalid("cannot merge a game into itself".into()));
         }
         let mut tx = self.pool.begin().await?;
+
+        // Both games must exist. Without this the merge is a silent no-op on
+        // unknown ids: every UPDATE matches zero rows, the DELETE matches
+        // zero rows, and the command reports success for work it never did.
+        for id in [from_id, to_id] {
+            let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM games WHERE id = ?1")
+                .bind(id)
+                .fetch_optional(&mut *tx)
+                .await?;
+            if exists.is_none() {
+                return Err(AppError::NotFound(format!("game not found: {id}")));
+            }
+        }
+
+        // Class 1: safe to reparent wholesale.
         for table in [
             "game_installations",
             "achievements",
@@ -675,7 +869,6 @@ impl Db {
             "save_profiles",
             "mods",
             "media",
-            "game_genres",
         ] {
             let sql = format!("UPDATE {table} SET game_id = ?1 WHERE game_id = ?2");
             sqlx::query(&sql)
@@ -684,10 +877,115 @@ impl Db {
                 .execute(&mut *tx)
                 .await?;
         }
+
+        // Class 2a: genres. `INSERT OR IGNORE` skips genres the survivor
+        // already has; the follow-up delete clears what remains.
+        sqlx::query(
+            "INSERT OR IGNORE INTO game_genres (game_id, genre_id) \
+             SELECT ?1, genre_id FROM game_genres WHERE game_id = ?2",
+        )
+        .bind(to_id)
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM game_genres WHERE game_id = ?1")
+            .bind(from_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // Class 2b: artwork ledger. The survivor's existing row for a kind
+        // wins — a merge is not a licence to replace artwork the survivor
+        // already has, including anything the user locked. The absorbed
+        // game's rows only fill kinds the survivor has no row for at all.
+        sqlx::query(
+            "INSERT OR IGNORE INTO artwork_assets \
+               (game_id, kind, source, remote_url, local_path, state, etag, \
+                user_locked, fetched_at, updated_at) \
+             SELECT ?1, kind, source, remote_url, local_path, state, etag, \
+                    user_locked, fetched_at, updated_at \
+             FROM artwork_assets WHERE game_id = ?2",
+        )
+        .bind(to_id)
+        .bind(from_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM artwork_assets WHERE game_id = ?1")
+            .bind(from_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // Keep the render columns consistent with the ledger just moved.
+        // `games.*_path` is what the UI actually reads, so a ledger row
+        // adopted for a kind the survivor has no path for would otherwise be
+        // recorded as `ready` while nothing rendered.
+        for (column, kind) in [
+            ("cover_path", "cover"),
+            ("hero_path", "hero"),
+            ("logo_path", "logo"),
+            ("icon_path", "icon"),
+        ] {
+            let sql = format!(
+                "UPDATE games SET {column} = COALESCE({column}, \
+                   (SELECT local_path FROM artwork_assets \
+                    WHERE game_id = ?1 AND kind = ?2 AND state = 'ready')) \
+                 WHERE id = ?1"
+            );
+            sqlx::query(&sql)
+                .bind(to_id)
+                .bind(kind)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        // Class 3: cached aggregates. Playtime is summed and the more recent
+        // `last_played_at` wins; NULL-safe because either side may never have
+        // been played.
+        sqlx::query(
+            "UPDATE games SET \
+               total_playtime_seconds = total_playtime_seconds \
+                 + COALESCE((SELECT total_playtime_seconds FROM games WHERE id = ?2), 0), \
+               last_played_at = MAX(COALESCE(last_played_at, ''), \
+                 COALESCE((SELECT last_played_at FROM games WHERE id = ?2), '')), \
+               updated_at = ?3 \
+             WHERE id = ?1",
+        )
+        .bind(to_id)
+        .bind(from_id)
+        .bind(now_rfc3339())
+        .execute(&mut *tx)
+        .await?;
+        // MAX over '' leaves an empty string when neither game was played;
+        // normalize it back to NULL so "never played" stays representable.
+        sqlx::query("UPDATE games SET last_played_at = NULL WHERE id = ?1 AND last_played_at = ''")
+            .bind(to_id)
+            .execute(&mut *tx)
+            .await?;
+
         sqlx::query("DELETE FROM games WHERE id = ?1")
             .bind(from_id)
             .execute(&mut *tx)
             .await?;
+
+        // Recompute completion from the survivor's now-combined achievement
+        // set, using the same formula as `recompute_completion`.
+        let (total, unlocked): (i64, i64) = sqlx::query_as(
+            "SELECT COUNT(*), COALESCE(SUM(is_unlocked), 0) \
+             FROM achievements WHERE game_id = ?1",
+        )
+        .bind(to_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let pct = if total == 0 {
+            0.0
+        } else {
+            (unlocked as f64 / total as f64) * 100.0
+        };
+        sqlx::query("UPDATE games SET completion_pct = ?1 WHERE id = ?2")
+            .bind(pct)
+            .bind(to_id)
+            .execute(&mut *tx)
+            .await?;
+
         tx.commit().await?;
         Ok(())
     }
