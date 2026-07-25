@@ -131,6 +131,12 @@ export function Settings() {
           value={!!settings.offline_mode}
           onChange={(v) => setSetting("offline_mode", v)}
         />
+        <Toggle
+          label="Fetch metadata & artwork"
+          desc="Automatically fill in descriptions, genres, and cover/hero/logo art from Steam and other sources after each scan."
+          value={!!settings.metadata_enabled}
+          onChange={(v) => setSetting("metadata_enabled", v)}
+        />
       </div>
 
       <div className="section-header" style={{ marginTop: 32 }}>

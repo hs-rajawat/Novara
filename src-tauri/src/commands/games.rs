@@ -5,49 +5,38 @@ use crate::db::games::UpsertGame;
 use crate::error::{AppError, AppResult};
 use crate::events::{AppEvent, NoticeLevel};
 use crate::integrity::{resolve_installation_status, InstallStatus};
+use crate::metadata::store::store_local_asset;
+use crate::metadata::ArtworkKind;
 use crate::models::{Game, Installation};
 use crate::scanner::epic::EpicContext;
 use crate::scanner::steam::SteamContext;
 use crate::state::AppState;
 use tauri::State;
 
-/// Copy `src_path` into `<app_data>/artwork/<game_id>/<kind>.<ext>`,
-/// removing any previous file for that kind/game.
-fn copy_artwork(
-    app_data_dir: &Path,
+/// Copy a user-picked file into `<app_data>/artwork/<game_id>/<kind>.<ext>`
+/// and lock it against the auto-fetcher (`ArtworkService` never overwrites
+/// a `user_locked` asset — see `db::artwork::lock_artwork_asset`).
+async fn set_user_artwork(
+    state: &AppState,
     game_id: &str,
-    src_path: &str,
-    kind: &str,
+    image_path: &str,
+    kind: ArtworkKind,
 ) -> AppResult<String> {
-    let src = Path::new(src_path);
-    if !src.is_file() {
-        return Err(AppError::Invalid(format!("not a file: {src_path}")));
+    let stored = store_local_asset(&state.app_data_dir, game_id, kind, Path::new(image_path))?;
+    state
+        .db
+        .lock_artwork_asset(game_id, kind.as_str(), &stored)
+        .await?;
+    match kind {
+        ArtworkKind::Cover => state.db.set_cover_path(game_id, &stored).await?,
+        ArtworkKind::Hero => state.db.set_hero_path(game_id, &stored).await?,
+        ArtworkKind::Logo => state.db.set_logo_path(game_id, &stored).await?,
+        ArtworkKind::Icon => state.db.set_icon_path(game_id, &stored).await?,
     }
-    let ext = src
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("jpg")
-        .to_lowercase();
-
-    let dest_dir = app_data_dir.join("artwork").join(game_id);
-    std::fs::create_dir_all(&dest_dir)
-        .map_err(|e| AppError::Other(format!("create artwork dir: {e}")))?;
-
-    let dest = dest_dir.join(format!("{kind}.{ext}"));
-
-    // Remove stale files with a different extension for the same kind.
-    for old_ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp"] {
-        let old = dest_dir.join(format!("{kind}.{old_ext}"));
-        if old.exists() && old != dest {
-            let _ = std::fs::remove_file(&old);
-        }
-    }
-
-    if src != dest.as_path() {
-        std::fs::copy(src, &dest).map_err(|e| AppError::Other(format!("copy artwork: {e}")))?;
-    }
-
-    Ok(dest.display().to_string())
+    state.bus.emit(AppEvent::GameUpdated {
+        game_id: game_id.to_string(),
+    });
+    Ok(stored)
 }
 
 #[tauri::command]
@@ -56,12 +45,7 @@ pub async fn set_cover_path(
     image_path: String,
     state: State<'_, Arc<AppState>>,
 ) -> AppResult<String> {
-    let stored = copy_artwork(&state.app_data_dir, &game_id, &image_path, "cover")?;
-    state.db.set_cover_path(&game_id, &stored).await?;
-    state.bus.emit(AppEvent::GameUpdated {
-        game_id: game_id.clone(),
-    });
-    Ok(stored)
+    set_user_artwork(&state, &game_id, &image_path, ArtworkKind::Cover).await
 }
 
 #[tauri::command]
@@ -70,12 +54,25 @@ pub async fn set_hero_path(
     image_path: String,
     state: State<'_, Arc<AppState>>,
 ) -> AppResult<String> {
-    let stored = copy_artwork(&state.app_data_dir, &game_id, &image_path, "hero")?;
-    state.db.set_hero_path(&game_id, &stored).await?;
-    state.bus.emit(AppEvent::GameUpdated {
-        game_id: game_id.clone(),
-    });
-    Ok(stored)
+    set_user_artwork(&state, &game_id, &image_path, ArtworkKind::Hero).await
+}
+
+#[tauri::command]
+pub async fn set_logo_path(
+    game_id: String,
+    image_path: String,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<String> {
+    set_user_artwork(&state, &game_id, &image_path, ArtworkKind::Logo).await
+}
+
+#[tauri::command]
+pub async fn set_icon_path(
+    game_id: String,
+    image_path: String,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<String> {
+    set_user_artwork(&state, &game_id, &image_path, ArtworkKind::Icon).await
 }
 
 /// `list_games` row shape: the plain `Game` row plus its primary
@@ -445,4 +442,31 @@ pub async fn set_hidden(
     state.db.set_hidden(&id, hidden).await?;
     state.bus.emit(AppEvent::GameUpdated { game_id: id });
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct RefreshMetadataResult {
+    pub text_updated: bool,
+    pub artwork_updated: u32,
+}
+
+/// The "Refresh Metadata" button — an explicit, single-game re-fetch.
+/// Still gated by the same `metadata_enabled && !offline_mode` formula
+/// every automatic sweep uses (see `AppState::allow_metadata_network`), so
+/// this is "fetch now" rather than a way to bypass the privacy toggle.
+/// `metadata_source = 'manual'` and `user_locked` artwork kinds are
+/// respected exactly as they are during an automatic sweep — see
+/// `MetadataService::refresh_game`/`ArtworkService::refresh_game`.
+#[tauri::command]
+pub async fn refresh_metadata(
+    game_id: String,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<RefreshMetadataResult> {
+    let allow_network = state.allow_metadata_network().await?;
+    let text_updated = state.metadata.refresh_game(&game_id, allow_network).await?;
+    let artwork_updated = state.artwork.refresh_game(&game_id, allow_network).await?;
+    Ok(RefreshMetadataResult {
+        text_updated,
+        artwork_updated,
+    })
 }

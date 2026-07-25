@@ -7,7 +7,7 @@ interface Props {
   /** Raw stored path (or http/data URI) — this component converts it. */
   src: string | null | undefined;
   title: string;
-  kind: "cover" | "hero";
+  kind: "cover" | "hero" | "logo";
   className?: string;
   alt?: string;
   /** Opt out of native lazy-loading for the single above-the-fold hero image. */

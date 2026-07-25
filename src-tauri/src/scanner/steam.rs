@@ -119,6 +119,17 @@ impl SteamContext {
         Self { libraries }
     }
 
+    /// The root Steam installation directory (not a library folder) — where
+    /// Steam-owned, non-library state lives, including
+    /// `appcache/librarycache/<appid>/` (the local artwork cache
+    /// `metadata::providers::steam_local` reads). `None` when Steam isn't
+    /// installed. Always the first entry of `libraries` by construction —
+    /// `discover_libraries` seeds the list with `steam_dir` itself before
+    /// appending any additional library folders from `libraryfolders.vdf`.
+    pub fn steam_root(&self) -> Option<&Path> {
+        self.libraries.first().map(|p| p.as_path())
+    }
+
     /// Whether Steam currently reports `app_id` as installed, checked
     /// against the live manifest across every discovered library — the
     /// authoritative signal, not just "NOVARA has a row for it". A

@@ -489,6 +489,26 @@ impl Db {
         Ok(())
     }
 
+    pub async fn set_logo_path(&self, id: &str, path: &str) -> AppResult<()> {
+        sqlx::query("UPDATE games SET logo_path = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(path)
+            .bind(now_rfc3339())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_icon_path(&self, id: &str, path: &str) -> AppResult<()> {
+        sqlx::query("UPDATE games SET icon_path = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(path)
+            .bind(now_rfc3339())
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     pub async fn set_notes(&self, id: &str, notes: Option<&str>) -> AppResult<()> {
         sqlx::query("UPDATE games SET user_notes = ?1, updated_at = ?2 WHERE id = ?3")
             .bind(notes)
@@ -546,6 +566,99 @@ impl Db {
         .await?;
 
         Ok(game_id)
+    }
+
+    /// `(source code, source_app_id)` for every installation of `game_id`
+    /// that carries one — what `metadata::identity::identity_for` turns
+    /// into `GameIdentifier::SourceAppId` entries for provider lookup. One
+    /// query per game (same cost shape as `get_primary_source`), not a
+    /// full-table join, since text/artwork fills iterate games one at a
+    /// time already.
+    pub async fn list_source_app_ids(&self, game_id: &str) -> AppResult<Vec<(String, String)>> {
+        Ok(sqlx::query_as::<_, (String, String)>(
+            r#"
+            SELECT s.code, gi.source_app_id
+            FROM game_installations gi
+            JOIN sources s ON s.id = gi.source_id
+            WHERE gi.game_id = ?1 AND gi.source_app_id IS NOT NULL
+            "#,
+        )
+        .bind(game_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Persist a `MetadataTextProvider` result. Only the fields the provider
+    /// actually supplied are written — `COALESCE` against the existing
+    /// column means a provider that left e.g. `publisher` empty never blanks
+    /// out a value a different (or earlier) provider already set.
+    /// `metadata_source` is stamped unconditionally to the provider's code
+    /// so a subsequent manual edit (which sets it to `'manual'` — see
+    /// `set_game_metadata_manual`, once the frontend edit path exists) is
+    /// the only thing `MetadataService::fill_missing` treats as "never
+    /// touch this again."
+    ///
+    /// Genres replace the game's existing `game_genres` rows outright
+    /// (rather than merging) — a provider's genre list is authoritative for
+    /// that provider's result, and re-running the same provider should not
+    /// accumulate stale tags from a prior, different response.
+    pub async fn set_game_metadata(
+        &self,
+        id: &str,
+        meta: &crate::metadata::GameMetadata,
+        source: &str,
+    ) -> AppResult<()> {
+        let mut tx = self.pool.begin().await?;
+        let now = now_rfc3339();
+        sqlx::query(
+            r#"
+            UPDATE games SET
+              description = COALESCE(?1, description),
+              release_year = COALESCE(?2, release_year),
+              developer = COALESCE(?3, developer),
+              publisher = COALESCE(?4, publisher),
+              metadata_json = COALESCE(?5, metadata_json),
+              metadata_source = ?6,
+              updated_at = ?7
+            WHERE id = ?8
+            "#,
+        )
+        .bind(&meta.description)
+        .bind(meta.release_year)
+        .bind(&meta.developer)
+        .bind(&meta.publisher)
+        .bind(&meta.raw_json)
+        .bind(source)
+        .bind(&now)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
+        if !meta.genres.is_empty() {
+            sqlx::query("DELETE FROM game_genres WHERE game_id = ?1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            for genre in &meta.genres {
+                sqlx::query("INSERT OR IGNORE INTO genres (name) VALUES (?1)")
+                    .bind(genre)
+                    .execute(&mut *tx)
+                    .await?;
+                sqlx::query(
+                    r#"
+                    INSERT OR IGNORE INTO game_genres (game_id, genre_id)
+                    SELECT ?1, id FROM genres WHERE name = ?2
+                    "#,
+                )
+                .bind(id)
+                .bind(genre)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Merge `from_id` into `to_id`: reparent installations, achievements,

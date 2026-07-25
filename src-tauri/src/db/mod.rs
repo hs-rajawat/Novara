@@ -16,6 +16,7 @@ use std::str::FromStr;
 use crate::error::AppResult;
 
 pub mod achievements;
+pub mod artwork;
 pub mod games;
 pub mod playtime;
 pub mod saves;

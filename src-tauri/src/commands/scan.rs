@@ -24,6 +24,21 @@ pub async fn scan_paths_now(state: State<'_, Arc<AppState>>) -> AppResult<Vec<Sc
         warn!(error = %e, "post-scan integrity sweep failed");
     }
 
+    // Metadata/artwork fill is opt-in (`metadata_enabled`) and always
+    // respects the `offline_mode` kill-switch — best-effort here too, since
+    // a provider hiccup shouldn't fail the scan the user actually asked for.
+    match state.allow_metadata_network().await {
+        Ok(allow_network) => {
+            if let Err(e) = state.metadata.fill_missing(allow_network).await {
+                warn!(error = %e, "post-scan metadata fill failed");
+            }
+            if let Err(e) = state.artwork.fill_missing(allow_network).await {
+                warn!(error = %e, "post-scan artwork fill failed");
+            }
+        }
+        Err(e) => warn!(error = %e, "failed to read metadata settings; skipping post-scan fill"),
+    }
+
     Ok(reports)
 }
 

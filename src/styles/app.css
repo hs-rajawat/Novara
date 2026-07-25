@@ -578,6 +578,15 @@ a.list-row {
   aspect-ratio: var(--hero-ratio);
 }
 
+.artwork-logo {
+  aspect-ratio: 2.4;
+  background: none;
+}
+
+.artwork-logo .artwork-img {
+  object-fit: contain;
+}
+
 .artwork-img {
   position: absolute;
   inset: 0;
@@ -1371,6 +1380,19 @@ a.list-row {
               rgba(7, 10, 18, 0.55) 72%, rgba(7, 10, 18, 0.94) 100%);
 }
 
+.details-hero-logo {
+  position: absolute;
+  left: 20px;
+  bottom: 18px;
+  z-index: 2;
+  max-width: min(320px, 46%);
+  max-height: 96px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 18px rgba(7, 10, 18, 0.65));
+}
+
 .details-back {
   position: absolute;
   top: 14px;
@@ -1480,6 +1502,11 @@ a.list-row {
 .artwork-preview-hero {
   width: 280px;
   height: 118px;
+}
+
+.artwork-preview-logo {
+  width: 220px;
+  height: 92px;
 }
 
 /* ═══════════ Recently played (Dashboard) ═══════════ */

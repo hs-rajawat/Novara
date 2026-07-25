@@ -45,8 +45,17 @@ export const api = {
     invoke<string>("set_cover_path", { gameId, imagePath }),
   setHeroPath: (gameId: string, imagePath: string) =>
     invoke<string>("set_hero_path", { gameId, imagePath }),
+  setLogoPath: (gameId: string, imagePath: string) =>
+    invoke<string>("set_logo_path", { gameId, imagePath }),
+  setIconPath: (gameId: string, imagePath: string) =>
+    invoke<string>("set_icon_path", { gameId, imagePath }),
   setHidden: (id: string, hidden: boolean) =>
     invoke<void>("set_hidden", { id, hidden }),
+  refreshMetadata: (gameId: string) =>
+    invoke<{ text_updated: boolean; artwork_updated: number }>(
+      "refresh_metadata",
+      { gameId }
+    ),
 
   // scan
   scanNow: () => invoke<ScanReport[]>("scan_paths_now"),

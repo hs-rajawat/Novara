@@ -17,6 +17,7 @@ export interface Game {
   cover_path: string | null;
   hero_path: string | null;
   icon_path: string | null;
+  logo_path: string | null;
   metadata_json: string | null;
   metadata_source: string | null;
   is_favorite: number;

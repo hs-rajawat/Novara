@@ -18,6 +18,7 @@ pub struct Game {
     pub cover_path: Option<String>,
     pub hero_path: Option<String>,
     pub icon_path: Option<String>,
+    pub logo_path: Option<String>,
     pub metadata_json: Option<String>,
     pub metadata_source: Option<String>,
     pub is_favorite: i64,
@@ -51,6 +52,27 @@ pub struct Installation {
     /// user-asserted states). See `crate::integrity`.
     pub status: String,
     pub last_verified_at: Option<String>,
+}
+
+/// A single artwork asset's provenance/refresh state. See
+/// `crate::metadata` for the provider abstraction that produces these and
+/// `crate::artwork` for the service that resolves and stores them.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ArtworkAsset {
+    pub id: i64,
+    pub game_id: String,
+    pub kind: String,
+    pub source: String,
+    pub remote_url: Option<String>,
+    pub local_path: Option<String>,
+    pub state: String,
+    pub etag: Option<String>,
+    /// 1 if the user manually set this asset; the auto-fetcher will never
+    /// overwrite it. See `game_installations.executable_override` for the
+    /// precedent this mirrors.
+    pub user_locked: i64,
+    pub fetched_at: Option<String>,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

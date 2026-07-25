@@ -15,6 +15,7 @@ import { Icon } from "@/components/Icon";
 import { StatCard } from "@/components/StatCard";
 import { GameArtwork } from "@/components/GameArtwork";
 import { PlatformBadge } from "@/components/PlatformBadge";
+import { toImgSrc } from "@/lib/image";
 
 const RECENT_SESSIONS_LIMIT = 8;
 
@@ -37,6 +38,7 @@ export function GameDetails() {
   const [notes, setNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [sessions, setSessions] = useState<PlaySession[]>([]);
 
   useEffect(() => {
@@ -153,6 +155,23 @@ export function GameDetails() {
     setGame((prev) => (prev ? { ...prev, hero_path: stored } : prev));
   }
 
+  async function pickLogo() {
+    const picked = await open({ multiple: false, filters: IMG_FILTERS });
+    if (!picked || Array.isArray(picked)) return;
+    const stored = await api.setLogoPath(id, picked as string);
+    setGame((prev) => (prev ? { ...prev, logo_path: stored } : prev));
+  }
+
+  async function refreshMetadata() {
+    setRefreshing(true);
+    try {
+      await api.refreshMetadata(id);
+      setGame(await api.getGame(id));
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   return (
     <>
       {/* Hero banner with floating cover */}
@@ -169,6 +188,13 @@ export function GameDetails() {
           alt={`${game.title} banner`}
           eager
         />
+        {game.logo_path && (
+          <img
+            className="details-hero-logo"
+            src={toImgSrc(game.logo_path)}
+            alt={`${game.title} logo`}
+          />
+        )}
       </div>
 
       <div className="details-head">
@@ -232,6 +258,14 @@ export function GameDetails() {
             <Icon name="package" size={15} />
             Mods
           </Link>
+          <button
+            className="btn icon-btn"
+            onClick={refreshMetadata}
+            disabled={refreshing}
+            title="Refresh description, genres, and artwork from available sources"
+          >
+            <Icon name="refresh" size={16} className={refreshing ? "spin" : undefined} />
+          </button>
           <button
             className="btn icon-btn"
             onClick={toggleHidden}
@@ -366,6 +400,21 @@ export function GameDetails() {
           <button className="btn btn-sm" onClick={pickHero}>
             <Icon name="image" size={13} />
             {game.hero_path ? "Change hero" : "Set hero"}
+          </button>
+        </div>
+        <div className="artwork-slot">
+          <div className="artwork-preview artwork-preview-logo">
+            <GameArtwork
+              src={game.logo_path}
+              title={game.title}
+              kind="logo"
+              className="artwork-fill"
+              alt="Logo"
+            />
+          </div>
+          <button className="btn btn-sm" onClick={pickLogo}>
+            <Icon name="image" size={13} />
+            {game.logo_path ? "Change logo" : "Set logo"}
           </button>
         </div>
       </div>
