@@ -51,8 +51,7 @@ export const api = {
     invoke<string>("set_icon_path", { gameId, imagePath }),
   setHidden: (id: string, hidden: boolean) =>
     invoke<void>("set_hidden", { id, hidden }),
-  refreshMetadata: (gameId: string) =>
-    invoke<{
+  refreshMetadata: (gameId: string) =>    invoke<{
       text_updated: boolean;
       artwork_updated: number;
       network_allowed: boolean;
@@ -112,6 +111,20 @@ export const api = {
     invoke<number>("start_session", { gameId, processName }),
   stopSession: (gameId: string) =>
     invoke<number | null>("stop_session", { gameId }),
+  /**
+   * Report observed idle seconds against an in-progress session, so analytics
+   * can separate active from total playtime.
+   *
+   * Caution for whoever wires a detector to this: NOVARA's own window
+   * visibility is *not* a valid idle signal. While a game is running the app is
+   * backgrounded or the game is fullscreen, so a browser-style
+   * "document hidden / no input" heuristic would classify essentially all
+   * gameplay as idle. Genuine detection needs OS-level input tracking
+   * (`GetLastInputInfo` on Windows) rather than anything observable from the
+   * webview.
+   */
+  reportIdle: (gameId: string, idleSeconds: number) =>
+    invoke<void>("report_idle", { gameId, idleSeconds }),
   listSessions: (gameId?: string, limit = 100) =>
     invoke<PlaySession[]>("list_sessions", { gameId, limit }),
 

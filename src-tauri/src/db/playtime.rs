@@ -67,6 +67,89 @@ impl Db {
         Ok((game_id, active))
     }
 
+    /// Every installation the passive watcher should look for, as
+    /// `(game_id, install_dir, executable)`.
+    ///
+    /// Deliberately *not* filtered to rows with a non-NULL `executable`, which
+    /// is what the watcher used to do. Steam installations carry no
+    /// executable — Steam is launched by URI and resolves the binary itself —
+    /// so filtering them out meant a Steam session opened by `launch_game` was
+    /// never matched to a running process and was stopped on the very next
+    /// watcher tick. Steam is the primary source, so effectively all launcher
+    /// playtime was recorded as 0–5 seconds.
+    ///
+    /// Only auto-managed, present installations are watched; a `deleted` row
+    /// cannot have a running process worth attributing.
+    pub async fn list_watch_targets(&self) -> AppResult<Vec<(String, String, Option<String>)>> {
+        Ok(sqlx::query_as(
+            r#"
+            SELECT gi.game_id, gi.install_dir, gi.executable
+            FROM game_installations gi
+            WHERE gi.status IN ('installed', 'offline', 'missing')
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    /// Close sessions left open by a previous run, returning how many.
+    ///
+    /// A session row is only closed by `stop_session`, so quitting NOVARA (or
+    /// crashing) while a game was running left `ended_at IS NULL` and
+    /// `duration_seconds = 0` forever. Those rows are never reconciled: the
+    /// in-memory `active` map starts empty on the next launch, so nothing owns
+    /// them any more.
+    ///
+    /// The real duration is unknowable after the fact, so nothing is credited
+    /// to `games.total_playtime_seconds` — inventing a figure would corrupt
+    /// analytics more quietly than leaving it at zero. `ended_at` is set to
+    /// `started_at` so the row stops claiming to be in progress.
+    pub async fn close_orphaned_sessions(&self) -> AppResult<u64> {
+        let result = sqlx::query(
+            "UPDATE play_sessions \
+             SET ended_at = started_at, duration_seconds = 0 \
+             WHERE ended_at IS NULL",
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Delete a session that never actually began, crediting no playtime.
+    ///
+    /// Used when a launch is observed to have failed: `launch_game` opens a
+    /// session optimistically, and if no matching process ever appears there
+    /// is nothing to record. Recording a zero-length session instead would put
+    /// a phantom entry in the Timeline for a game that never ran.
+    pub async fn discard_session(&self, session_id: i64) -> AppResult<()> {
+        let game_id: Option<String> =
+            sqlx::query_scalar("SELECT game_id FROM play_sessions WHERE id = ?1")
+                .bind(session_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        sqlx::query("DELETE FROM play_sessions WHERE id = ?1")
+            .bind(session_id)
+            .execute(&self.pool)
+            .await?;
+
+        // `start_session` optimistically stamps `games.last_played_at`, so
+        // discarding the session must also roll that back or the game claims a
+        // play it never had — and "last played" drives sort order and the
+        // Dashboard's featured pick. Recomputed from the sessions that remain
+        // rather than nulled, so earlier real plays survive.
+        if let Some(game_id) = game_id {
+            sqlx::query(
+                "UPDATE games SET last_played_at = \
+                   (SELECT MAX(started_at) FROM play_sessions WHERE game_id = ?1) \
+                 WHERE id = ?1",
+            )
+            .bind(&game_id)
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
     pub async fn list_sessions(&self, game_id: Option<&str>, limit: i64) -> AppResult<Vec<PlaySession>> {
         let rows = if let Some(g) = game_id {
             sqlx::query_as::<_, PlaySession>(

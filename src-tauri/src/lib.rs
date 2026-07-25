@@ -122,10 +122,34 @@ pub fn run() {
             commands::saves::detect_save_paths,
             commands::playtime::start_session,
             commands::playtime::stop_session,
+            commands::playtime::report_idle,
             commands::playtime::list_sessions,
             commands::analytics::dashboard_stats,
             commands::analytics::heatmap,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|handle, event| {
+            // Close any in-progress play session before the process goes away.
+            //
+            // A session row is only ever closed by `PlaytimeTracker::stop`, and
+            // the in-memory map of open sessions does not survive the process —
+            // so quitting while a game was running used to leave the row with
+            // `ended_at IS NULL` and no playtime credited, permanently. The
+            // elapsed time up to this point is real, so it is recorded.
+            //
+            // `ExitRequested` is used rather than `Exit` because state is still
+            // available here; the write is small and bounded, and blocking
+            // briefly on shutdown is preferable to losing the session.
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                if let Some(state) = handle.try_state::<Arc<state::AppState>>() {
+                    let playtime = state.playtime.clone();
+                    match tauri::async_runtime::block_on(playtime.stop_all()) {
+                        Ok(0) => {}
+                        Ok(n) => tracing::info!(closed = n, "closed open play sessions on exit"),
+                        Err(e) => tracing::warn!(error = %e, "failed to close sessions on exit"),
+                    }
+                }
+            }
+        });
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::db::Db;
 use crate::error::AppResult;
@@ -53,6 +53,17 @@ impl AppState {
             app_data_dir.clone(),
             http_client,
         ));
+
+        // Reconcile sessions left open by a previous run before the watcher
+        // starts. Nothing else will ever close them: the tracker's in-memory
+        // map begins empty, so those rows have no owner. Done before the
+        // watcher spawns so a stale row cannot be mistaken for a live session.
+        match db.close_orphaned_sessions().await {
+            Ok(0) => {}
+            Ok(n) => info!(closed = n, "closed play sessions orphaned by a previous run"),
+            // Best-effort: a failure here must not prevent startup.
+            Err(e) => warn!(error = %e, "failed to close orphaned play sessions"),
+        }
 
         // Kick off passive process watcher with a generous poll interval —
         // 5s is enough resolution for playtime tracking and gentle on CPU.
