@@ -112,10 +112,10 @@ npm run tauri dev
 - ✅ Playtime tracking
 - ✅ Save management
 - ✅ Installation verification
-- [ ] GOG support
-- [ ] Ubisoft Connect support
-- [ ] EA App support
-- [ ] Themes
+- ⬜ GOG support
+- ⬜ Ubisoft Connect support
+- ⬜ EA App support
+- ⬜ Themes
 - 🚧 Cloud sync (optional)
 
 ---
