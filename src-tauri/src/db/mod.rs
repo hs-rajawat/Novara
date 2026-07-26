@@ -21,9 +21,12 @@ pub mod games;
 pub mod playtime;
 pub mod saves;
 pub mod settings;
+pub mod title_match;
 
 #[cfg(test)]
 mod games_tests;
+#[cfg(test)]
+mod title_match_tests;
 
 #[derive(Clone)]
 pub struct Db {
