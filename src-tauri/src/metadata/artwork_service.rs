@@ -25,7 +25,7 @@
 //! that the pipeline still has work pending. Scope any such query to
 //! `games.is_hidden = 0`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use tracing::{info, warn};
@@ -35,13 +35,14 @@ use crate::db::Db;
 use crate::error::AppResult;
 use crate::events::{AppEvent, EventBus};
 
+use super::breaker::CircuitBreaker;
 use super::identity::identity_for;
 use super::providers::epic_catalog::EpicCatalogProvider;
 use super::providers::steam_cdn::SteamCdnProvider;
 use super::providers::steam_local::SteamLocalProvider;
 use super::store::store_asset;
 use super::throttle::Throttle;
-use super::{ArtworkKind, ArtworkProvider, AssetSource, Lookup, LookupContext, TemporaryReason};
+use super::{ArtworkKind, ArtworkProvider, AssetSource, Lookup, LookupContext};
 use crate::scanner::steam::SteamContext;
 
 pub struct ArtworkService {
@@ -120,8 +121,7 @@ impl ArtworkService {
         let mut checked = 0u32;
         let mut updated = 0u32;
         let mut settled = 0u32;
-        let mut circuit_broken: HashSet<&'static str> = HashSet::new();
-        let mut temporary_misses: HashMap<&'static str, u32> = HashMap::new();
+        let mut breaker = CircuitBreaker::new();
 
         for game in &games {
             let existing = self.db.list_artwork_assets(&game.id).await?;
@@ -137,8 +137,7 @@ impl ArtworkService {
                     eligible,
                     &providers,
                     allow_network,
-                    &mut circuit_broken,
-                    &mut temporary_misses,
+                    &mut breaker,
                 )
                 .await?;
             updated += outcome.filled;
@@ -199,8 +198,7 @@ impl ArtworkService {
                 all,
                 &providers,
                 allow_network,
-                &mut HashSet::new(),
-                &mut HashMap::new(),
+                &mut CircuitBreaker::new(),
             )
             .await?;
         self.announce(game_id, outcome.filled);
@@ -250,8 +248,7 @@ impl ArtworkService {
         mut missing: HashSet<ArtworkKind>,
         providers: &[Arc<dyn ArtworkProvider>],
         allow_network: bool,
-        circuit_broken: &mut HashSet<&'static str>,
-        temporary_misses: &mut HashMap<&'static str, u32>,
+        breaker: &mut CircuitBreaker,
     ) -> AppResult<ResolveOutcome> {
         let mut updated = 0u32;
         // Every provider must give a definitive answer for the remaining kinds
@@ -271,7 +268,7 @@ impl ArtworkService {
                 break;
             }
             let code = provider.code();
-            if circuit_broken.contains(code) {
+            if breaker.is_broken(code) {
                 conclusive = false;
                 continue;
             }
@@ -408,14 +405,8 @@ impl ArtworkService {
                 Lookup::Temporary(reason) => {
                     // Transient: the answer is unknown, not negative.
                     conclusive = false;
-                    let broken = matches!(reason, TemporaryReason::RateLimited) || {
-                        let count = temporary_misses.entry(code).or_insert(0);
-                        *count += 1;
-                        *count >= 5
-                    };
-                    if broken {
+                    if breaker.record(code, &reason) {
                         warn!(provider = code, "circuit-breaking artwork provider for this sweep");
-                        circuit_broken.insert(code);
                     }
                 }
             }

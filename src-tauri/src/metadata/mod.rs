@@ -28,6 +28,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 pub mod artwork_service;
+pub mod breaker;
 pub mod capability;
 pub mod identity;
 pub mod offline;

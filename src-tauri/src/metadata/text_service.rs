@@ -3,7 +3,6 @@
 //! `crate::metadata` module docs for the provider contract and `Lookup`
 //! classification this loop reacts to.
 
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use tracing::{info, warn};
@@ -13,11 +12,12 @@ use crate::error::{AppError, AppResult};
 use crate::events::{AppEvent, EventBus};
 use crate::models::Game;
 
+use super::breaker::CircuitBreaker;
 use super::identity::identity_for;
 use super::offline::OfflineProvider;
 use super::providers::epic_catalog::EpicCatalogProvider;
 use super::providers::steam_cdn::SteamCdnProvider;
-use super::{Lookup, LookupContext, MetadataTextProvider, TemporaryReason};
+use super::{Lookup, LookupContext, MetadataTextProvider};
 
 pub struct MetadataService {
     db: Db,
@@ -55,8 +55,7 @@ impl MetadataService {
         let games = self.db.list_games(false).await?;
         let mut checked = 0u32;
         let mut updated = 0u32;
-        let mut circuit_broken: HashSet<&'static str> = HashSet::new();
-        let mut temporary_misses: HashMap<&'static str, u32> = HashMap::new();
+        let mut breaker = CircuitBreaker::new();
 
         for game in &games {
             // A manual edit (once the frontend gains one) sets
@@ -73,7 +72,7 @@ impl MetadataService {
             }
             checked += 1;
             if self
-                .resolve_one(game, allow_network, &mut circuit_broken, &mut temporary_misses)
+                .resolve_one(game, allow_network, &mut breaker)
                 .await?
             {
                 updated += 1;
@@ -100,7 +99,7 @@ impl MetadataService {
         if game.metadata_source.as_deref() == Some("manual") {
             return Ok(false);
         }
-        self.resolve_one(&game, allow_network, &mut HashSet::new(), &mut HashMap::new())
+        self.resolve_one(&game, allow_network, &mut CircuitBreaker::new())
             .await
     }
 
@@ -110,8 +109,7 @@ impl MetadataService {
         &self,
         game: &Game,
         allow_network: bool,
-        circuit_broken: &mut HashSet<&'static str>,
-        temporary_misses: &mut HashMap<&'static str, u32>,
+        breaker: &mut CircuitBreaker,
     ) -> AppResult<bool> {
         let identity = identity_for(&self.db, game).await?;
         let ctx = LookupContext {
@@ -121,7 +119,7 @@ impl MetadataService {
 
         for provider in &self.providers {
             let code = provider.code();
-            if circuit_broken.contains(code) {
+            if breaker.is_broken(code) {
                 continue;
             }
             if provider.requires_network() && !allow_network {
@@ -138,19 +136,8 @@ impl MetadataService {
                 Lookup::Unsupported => continue,
                 Lookup::Permanent(_) => continue,
                 Lookup::Temporary(reason) => {
-                    // A rate limit is an unambiguous "stop asking this
-                    // provider" signal; anything else only trips the
-                    // breaker after repeated misses across the batch, since
-                    // a single timeout is often just one bad request, not a
-                    // broken provider.
-                    let broken = matches!(reason, TemporaryReason::RateLimited) || {
-                        let count = temporary_misses.entry(code).or_insert(0);
-                        *count += 1;
-                        *count >= 5
-                    };
-                    if broken {
+                    if breaker.record(code, &reason) {
                         warn!(provider = code, "circuit-breaking metadata provider for this sweep");
-                        circuit_broken.insert(code);
                     }
                     continue;
                 }
