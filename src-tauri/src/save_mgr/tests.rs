@@ -11,30 +11,7 @@ use super::archive::{compile_glob, read_archive, sibling_with_suffix, write_arch
 use super::SaveManager;
 use crate::error::AppError;
 use crate::events::EventBus;
-use crate::test_support::{seed_game, test_db};
-
-/// A temporary directory removed when the test ends.
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("novara-b7-{tag}-{}", uuid::Uuid::new_v4()));
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-    fn path(&self) -> &Path {
-        &self.0
-    }
-    fn child(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+use crate::test_support::{seed_game, test_db, TempDir};
 
 fn write_file(path: &Path, contents: &[u8]) {
     if let Some(parent) = path.parent() {

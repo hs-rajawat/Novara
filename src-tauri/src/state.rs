@@ -126,23 +126,12 @@ impl AppState {
     }
 
     /// `metadata_enabled && !offline_mode` — the one gate every network
-    /// provider call must pass. Read fresh each call rather than cached, so
-    /// flipping either setting takes effect on the very next sweep/refresh
-    /// without an app restart.
+    /// provider call must pass.
+    ///
+    /// Delegates to `Db::allow_metadata_network`, where the rule and its
+    /// deny-by-default behaviour are defined and tested.
     pub async fn allow_metadata_network(&self) -> AppResult<bool> {
-        let enabled = self
-            .db
-            .get_setting("metadata_enabled")
-            .await?
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let offline = self
-            .db
-            .get_setting("offline_mode")
-            .await?
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        Ok(enabled && !offline)
+        self.db.allow_metadata_network().await
     }
 
     /// Forward AppEvents to the Tauri event bus so the frontend can listen.

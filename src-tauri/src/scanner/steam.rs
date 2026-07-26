@@ -284,3 +284,7 @@ fn parse_manifest(path: &Path, steamapps_dir: &Path) -> AppResult<DetectedGame> 
         install_state_hint,
     })
 }
+
+#[cfg(test)]
+#[path = "steam_tests.rs"]
+mod steam_tests;

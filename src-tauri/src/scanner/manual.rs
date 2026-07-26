@@ -107,3 +107,7 @@ fn find_executable(dir: &Path) -> Option<PathBuf> {
     }
     named_match.or_else(|| best.map(|(p, _)| p))
 }
+
+#[cfg(test)]
+#[path = "manual_tests.rs"]
+mod manual_tests;

@@ -32,6 +32,45 @@ use crate::metadata::{
 };
 use crate::models::now_rfc3339;
 
+/// A temporary directory removed when the test ends.
+///
+/// Lives in the harness rather than beside one suite because filesystem-facing
+/// code — the save manager, the scanners, the artwork store — all need the same
+/// thing, and a per-suite copy is a per-suite chance to leak a directory.
+pub struct TempDir(PathBuf);
+
+impl TempDir {
+    pub fn new(tag: &str) -> Self {
+        let path = std::env::temp_dir().join(format!("novara-{tag}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&path).expect("create temp dir");
+        Self(path)
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+
+    pub fn child(&self, name: &str) -> PathBuf {
+        self.0.join(name)
+    }
+
+    /// Write a file, creating any missing parent directories.
+    pub fn write(&self, relative: &str, contents: &str) -> PathBuf {
+        let path = self.child(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create parent dirs");
+        }
+        std::fs::write(&path, contents).expect("write temp file");
+        path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// Ensures every `test_db()` call gets its own isolated database even when
 /// tests run concurrently on separate threads.
 static DB_SEQ: AtomicUsize = AtomicUsize::new(0);

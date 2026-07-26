@@ -38,6 +38,8 @@ pub mod text_service;
 pub mod throttle;
 
 #[cfg(test)]
+mod privacy_tests;
+#[cfg(test)]
 mod tests;
 
 /// Descriptive (non-visual) metadata a `MetadataTextProvider` can supply.
