@@ -26,38 +26,28 @@ Just your games.**
 
 ---
 
-## ✨ Features
+## 📂 First-Class Support for Manual Games
 
+Most launchers either ignore manually installed games or treat them as shortcuts.
+
+NOVARA gives them the same experience as launcher-managed games.
+
+**Manual games support:**
+
+  **✨ Features**
+  
 - 🔒 Privacy (NOVARA is designed to work locally -> No account required)
-- 🎮 Unified library across multiple launchers
-- 🚀 Native desktop performance (Tauri + Rust)
-- 📊 Automatic playtime tracking
-- 💾 Save backup & restore
-- 🔍 Installation integrity verification
-- 🎨 Artwork & metadata support (Steam, expanding to other sources)
-- 📈 Timeline and session history
-- 🔒 Local-first architecture
-- 🚫 No telemetry or cloud dependency
-- ⚡ Fast SQLite-powered library
-
----
-
-### 📂 First-Class Support for Manual Games
-
-Unlike most launchers, NOVARA treats manually installed games as first-class citizens.
-
-You still get:
-
-- 🎮 Library integration
-- 📊 Playtime tracking
-- 🏆 Achievement progress
-- 📈 Game progress
-- 🎨 Artwork & metadata (Steam, expanding to other sources)
+- 🎮 Automatic library integration
 - 🚀 One-click launching
-- 🎨 Modern desktop interface
-- 🔒 Local-first design
+- 📊 Playtime tracking
+- 📈 Progress & completion tracking
+- 💾 Save backup & restore
+- 🎨 Metadata & artwork (Steam today, expanding to other sources)
+- 🔍 Installation integrity verification
 - ⚡ Fast native performance
+- 🔒 Fully local-first — no launcher required
 
+Whether a game came from Steam, itch.io, GOG installers, old DVDs, or any standalone executable, it belongs in your library.
 
 No launcher required.
 
