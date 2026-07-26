@@ -86,7 +86,7 @@ rediscovered:
   connection; re-entering it to force pseudo-states was unnecessary once hover was
   established with a genuine pointer move.
 - **A lingering instance holds the debugging port.** Without killing
-  `gamevault.exe` and waiting for the port to be refused before launching,
+  `novara.exe` and waiting for the port to be refused before launching,
   `connectOverCDP` attaches to an exiting process and every action fails with
   "Target page, context or browser has been closed" — indistinguishable from a
   product bug.

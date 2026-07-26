@@ -42,6 +42,8 @@ pub struct AppState {
 impl AppState {
     pub async fn initialize(app_data_dir: PathBuf) -> AppResult<Self> {
         info!(dir = %app_data_dir.display(), "initializing app state");
+        // Filename deliberately left as `gamevault.db` through this rebrand —
+        // see HANDOFF §7.2. Renaming it is a separate, isolated change.
         let db_path = app_data_dir.join("gamevault.db");
         let db = Db::open(&db_path).await?;
         let bus = EventBus::default();
@@ -151,7 +153,7 @@ impl AppState {
         let mut rx = self.bus.subscribe();
         tauri::async_runtime::spawn(async move {
             while let Ok(ev) = rx.recv().await {
-                let _ = handle.emit("gv://event", &ev);
+                let _ = handle.emit("novara://event", &ev);
             }
         });
     }

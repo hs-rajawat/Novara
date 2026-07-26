@@ -61,8 +61,8 @@ impl Scanner for SteamScanner {
 #[cfg(target_os = "windows")]
 fn find_steam_dir() -> Option<PathBuf> {
     // Registry would be more reliable, but a Program Files probe avoids
-    // pulling a registry crate for the MVP. Override via $GAMEVAULT_STEAM_DIR.
-    if let Ok(dir) = std::env::var("GAMEVAULT_STEAM_DIR") {
+    // pulling a registry crate for the MVP. Override via $NOVARA_STEAM_DIR.
+    if let Ok(dir) = std::env::var("NOVARA_STEAM_DIR") {
         let p = PathBuf::from(dir);
         if p.exists() {
             return Some(p);
@@ -82,7 +82,7 @@ fn find_steam_dir() -> Option<PathBuf> {
 
 #[cfg(not(target_os = "windows"))]
 fn find_steam_dir() -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("GAMEVAULT_STEAM_DIR") {
+    if let Ok(dir) = std::env::var("NOVARA_STEAM_DIR") {
         let p = PathBuf::from(dir);
         if p.exists() {
             return Some(p);

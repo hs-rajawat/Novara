@@ -114,7 +114,7 @@ fn epic_launcher_running() -> bool {
 fn find_epic_launcher_exe() -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
 
-    if let Ok(p) = std::env::var("GAMEVAULT_EPIC_LAUNCHER_EXE") {
+    if let Ok(p) = std::env::var("NOVARA_EPIC_LAUNCHER_EXE") {
         let p = PathBuf::from(p);
         if p.is_file() {
             return Some(p);

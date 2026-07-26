@@ -17,7 +17,7 @@ src-tauri/Cargo.lock
 *.db-journal
 *.sqlite
 *.sqlite-journal
-.gamevault/
+.novara/
 
 # env
 .env

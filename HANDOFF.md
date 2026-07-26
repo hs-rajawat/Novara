@@ -12,7 +12,7 @@ NOVARA is a **local-first desktop game library manager** (think a privacy-respec
 
 - **Stack:** Tauri 2 (Rust core) + React 18 + TypeScript + Vite. SQLite via `sqlx` (runtime-tokio-rustls).
 - **Primary target OS:** Windows 11. Rust uses `#[cfg(windows)]` / `#[cfg(not(windows))]` splits; non-Windows compiles and tests pass but some features (Epic, drive-mount detection) are Windows-authoritative.
-- **Product name:** NOVARA (renamed from "Game Vault" in commit `60a1b7b`). See §7 for the branding constraint.
+- **Product name:** NOVARA (renamed from "Game Vault" in commit `60a1b7b`; the internal rename of crate, package, identifier and database filename followed on 2026-07-26 — see §7.2).
 
 ---
 
@@ -38,8 +38,8 @@ Crate layout is documented at the top of `lib.rs`. Dependency graph is a strict 
 
 ### Startup sequence (`lib.rs` `setup`)
 1. Resolve `app_data_dir`, `create_dir_all`.
-2. `block_on(AppState::initialize)` — opens DB `gamevault.db` (filename intentionally unchanged, see §7), runs migrations, constructs services, spawns playtime watcher.
-3. `start_event_forwarder` — subscribes to the bus and forwards every `AppEvent` to the frontend over Tauri event `gv://event`.
+2. `block_on(AppState::initialize)` — opens DB `gamevault.db` (filename deliberately unchanged by the rebrand, see §7.2), runs migrations, constructs services, spawns playtime watcher.
+3. `start_event_forwarder` — subscribes to the bus and forwards every `AppEvent` to the frontend over Tauri event `novara://event`.
 4. **Only after the forwarder subscribes:** spawn integrity startup sweep + periodic sweep (300s). Ordering is load-bearing — sweeps emit bus events that would be dropped if spawned before the forwarder subscribes.
 
 ### Frontend (`src/`)
@@ -238,7 +238,34 @@ Validation at ship: `cargo check`, `cargo clippy --all-targets -- -D warnings`, 
    - **This exception does not generalise.** Now that `0006` is committed,
      treat all six migrations as frozen. Any further schema change is a new
      `0007_*.sql`.
-2. **Do NOT rename compatibility-sensitive identifiers** during any rebrand/refactor: crate names, package identifiers, environment variable names (e.g. `GAMEVAULT_EPIC_MANIFESTS_DIR`), and the **database filename `gamevault.db`** (`state.rs`). These are load-bearing for existing installs. Branding changes are user-facing strings/comments only.
+2. **Compatibility-sensitive identifiers.** Renaming any of these is a
+   deliberate, breaking act — never incidental to a refactor.
+   - **Frozen permanently:** anything inside a committed migration (see §7.1),
+     and the save-archive magic header `b"GVBK"` in `save_mgr/archive.rs`. The
+     header is validated on read, so changing it makes every existing `.gvbk`
+     backup unreadable.
+   - **Still frozen for now:** the database filename **`gamevault.db`**
+     (`state.rs`). Held back from the rebrand deliberately, to keep this change
+     free of any database-migration concern. Renaming it is its own isolated
+     change.
+   - **Renamed on 2026-07-26, with explicit user approval, before first public
+     release** (commit: internal rebrand to NOVARA):
+     Cargo package `gamevault` → `novara`, library `gamevault_lib` →
+     `novara_lib`, npm package `gamevault` → `novara`, bundle identifier
+     `app.novara.desktop` → `com.novara.desktop`, the Tauri event channel
+     `gv://event` → `novara://event`, and the test-seam environment variables
+     `GAMEVAULT_STEAM_DIR` / `GAMEVAULT_EPIC_MANIFESTS_DIR` /
+     `GAMEVAULT_EPIC_LAUNCHER_EXE` → `NOVARA_*`.
+   - **Why that was safe, and what it cost.** Nothing has shipped, so there are
+     no installs to break. The identifier change does relocate the app data
+     directory, which orphans any existing library: artwork paths are stored as
+     absolute strings embedding the old directory, and the asset-protocol scope
+     (`$APPDATA/artwork/**`) resolves against the *new* directory, so copying
+     the files across would not make them loadable. A fresh scan rebuilds the
+     library and re-fetches artwork; playtime history does not survive.
+   - **After the first public release this list is frozen again.** A rename then
+     needs a data-directory migration *and* a rewrite of every stored absolute
+     path, which is a feature, not a refactor.
 3. **Privacy-first / offline by default.** No network access unless the user opts in. The metadata milestone must gate all network calls behind an explicit enabled setting (there's already an `offline_mode` setting seeded in `0001`).
 4. **Background work must never block scans or launches.** Spawn via `tauri::async_runtime::spawn`; communicate via the event bus. Mirror the existing post-scan integrity sweep pattern (best-effort, failures logged, never fail the user's action).
 5. **Event-forwarder ordering.** Any new startup background task that emits bus events must be spawned AFTER `start_event_forwarder` in `lib.rs`, or its early events are dropped.

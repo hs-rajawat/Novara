@@ -1,12 +1,12 @@
 [package]
-name = "gamevault"
+name = "novara"
 version = "0.1.0"
 description = "NOVARA - local-first game library tracker"
 edition = "2021"
 rust-version = "1.77"
 
 [lib]
-name = "gamevault_lib"
+name = "novara_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

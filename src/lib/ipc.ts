@@ -136,5 +136,5 @@ export const api = {
 export function onEvent(
   handler: (ev: AppEvent) => void
 ): Promise<UnlistenFn> {
-  return listen<AppEvent>("gv://event", (e) => handler(e.payload));
+  return listen<AppEvent>("novara://event", (e) => handler(e.payload));
 }

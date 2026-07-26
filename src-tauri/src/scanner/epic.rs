@@ -129,9 +129,9 @@ fn to_detected(m: EpicManifest) -> DetectedGame {
 
 #[cfg(target_os = "windows")]
 fn find_epic_manifests_dir() -> Option<PathBuf> {
-    // Override via $GAMEVAULT_EPIC_MANIFESTS_DIR (used by tests). Otherwise
+    // Override via $NOVARA_EPIC_MANIFESTS_DIR (used by tests). Otherwise
     // the launcher's fixed ProgramData location.
-    if let Ok(dir) = std::env::var("GAMEVAULT_EPIC_MANIFESTS_DIR") {
+    if let Ok(dir) = std::env::var("NOVARA_EPIC_MANIFESTS_DIR") {
         let p = PathBuf::from(dir);
         if p.is_dir() {
             return Some(p);
@@ -156,7 +156,7 @@ fn find_epic_manifests_dir() -> Option<PathBuf> {
     // Epic Games Launcher is Windows/macOS; a native Linux client doesn't
     // exist. Keep the env override so cross-platform tests can exercise the
     // scanner, but otherwise report "not installed".
-    if let Ok(dir) = std::env::var("GAMEVAULT_EPIC_MANIFESTS_DIR") {
+    if let Ok(dir) = std::env::var("NOVARA_EPIC_MANIFESTS_DIR") {
         let p = PathBuf::from(dir);
         if p.is_dir() {
             return Some(p);

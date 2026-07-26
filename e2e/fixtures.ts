@@ -118,7 +118,7 @@ export const test = base.extend<{ page: Page }, { appProcess: AppProcess }>({
       // attach to a process that was already exiting and every action then failed
       // with "Target page, context or browser has been closed". Attaching to a
       // corpse looks exactly like a product bug, so this has to be deterministic.
-      await runQuietly("taskkill", ["/IM", "gamevault.exe", "/F"]);
+      await runQuietly("taskkill", ["/IM", "novara.exe", "/F"]);
       await runQuietly("powershell", [
         "-NoProfile",
         "-Command",
@@ -190,7 +190,7 @@ export const test = base.extend<{ page: Page }, { appProcess: AppProcess }>({
         if (proc.pid !== undefined) {
           await runQuietly("taskkill", ["/PID", String(proc.pid), "/T", "/F"]);
         }
-        await runQuietly("taskkill", ["/IM", "gamevault.exe", "/F"]);
+        await runQuietly("taskkill", ["/IM", "novara.exe", "/F"]);
       }
     },
     { scope: "worker", timeout: STARTUP_TIMEOUT_MS + 60_000 },
