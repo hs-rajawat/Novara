@@ -20,20 +20,25 @@ NOVARA is different.
 
 Whether your games come from Steam, Epic Games, or are manually installed, NOVARA lets you organise them in one clean library.
 
-No accounts required.
-No cloud dependency.
-Just your games.
+**No account required.  
+No cloud dependency.  
+Just your games.**
 
 ---
 
-### 🎮 Universal Game Library
+## ✨ Features
 
-Manage games from multiple sources in one place.
-
-- Steam
-- Epic Games
-- Manually installed games
-- More launchers planned
+- 🔒 Privacy (NOVARA is designed to work locally -> No account required)
+- 🎮 Unified library across multiple launchers
+- 🚀 Native desktop performance (Tauri + Rust)
+- 📊 Automatic playtime tracking
+- 💾 Save backup & restore
+- 🔍 Installation integrity verification
+- 🎨 Artwork & metadata support (Steam, expanding to other sources)
+- 📈 Timeline and session history
+- 🔒 Local-first architecture
+- 🚫 No telemetry or cloud dependency
+- ⚡ Fast SQLite-powered library
 
 ---
 
@@ -47,7 +52,7 @@ You still get:
 - 📊 Playtime tracking
 - 🏆 Achievement progress
 - 📈 Game progress
-- 🎨 Artwork & metadata
+- 🎨 Artwork & metadata (Steam, expanding to other sources)
 - 🚀 One-click launching
 - 🎨 Modern desktop interface
 - 🔒 Local-first design
@@ -74,22 +79,30 @@ No launcher required.
 
 ### Backend
 
+- Rust
 - Tauri v2
 - SQLite
 
 ---
 
-## 📦 Installation
+## 📦 Development Setup
 
 ```bash
 git clone https://github.com/hs-rajawat/NOVARA.git
-
 cd NOVARA
 
 npm install
+npm run build
 
+cargo test
 npm run tauri dev
 ```
+
+> **Note**
+>
+> On a fresh clone, run `npm run build` before running `cargo test` or `npm run tauri dev`.
+>
+> NOVARA uses Tauri's `generate_context!()` macro, which depends on the generated frontend assets in `dist/`. Because `dist/` is gitignored, those assets don't exist until the frontend has been built once.
 
 ---
 
@@ -126,4 +139,4 @@ It helps more people discover NOVARA and motivates future development.
 
 ## 📄 License
 
-MIT License
+This project is licensed under the **MIT License**.
