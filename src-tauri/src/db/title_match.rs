@@ -19,24 +19,35 @@ use super::Db;
 pub struct SteamTitleMatch {
     pub app_id: Option<String>,
     pub matched_title: Option<String>,
+    /// The base game to borrow artwork from when `app_id` is a DLC, which has no
+    /// library artwork of its own. `None` for an ordinary match.
+    pub artwork_app_id: Option<String>,
     pub settled_by: String,
 }
+
+/// The stored columns, in query order: `app_id`, `matched_title`,
+/// `artwork_app_id`, `settled_by`.
+type MatchRow = (Option<String>, Option<String>, Option<String>, String);
 
 impl Db {
     /// The recorded outcome for a game, or `None` if it has never been searched.
     pub async fn steam_title_match(&self, game_id: &str) -> AppResult<Option<SteamTitleMatch>> {
-        let row: Option<(Option<String>, Option<String>, String)> = sqlx::query_as(
-            "SELECT app_id, matched_title, settled_by FROM steam_title_matches WHERE game_id = ?1",
+        let row: Option<MatchRow> = sqlx::query_as(
+            "SELECT app_id, matched_title, artwork_app_id, settled_by \
+             FROM steam_title_matches WHERE game_id = ?1",
         )
         .bind(game_id)
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(app_id, matched_title, settled_by)| SteamTitleMatch {
-            app_id,
-            matched_title,
-            settled_by,
-        }))
+        Ok(row.map(
+            |(app_id, matched_title, artwork_app_id, settled_by)| SteamTitleMatch {
+                app_id,
+                matched_title,
+                artwork_app_id,
+                settled_by,
+            },
+        ))
     }
 
     /// Record a search outcome, replacing any previous one for the game.
@@ -49,23 +60,26 @@ impl Db {
         game_id: &str,
         app_id: Option<&str>,
         matched_title: Option<&str>,
+        artwork_app_id: Option<&str>,
         settled_by: &str,
     ) -> AppResult<()> {
         sqlx::query(
             r#"
             INSERT INTO steam_title_matches
-                (game_id, app_id, matched_title, settled_by, resolved_at)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+                (game_id, app_id, matched_title, artwork_app_id, settled_by, resolved_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             ON CONFLICT(game_id) DO UPDATE SET
-                app_id        = excluded.app_id,
-                matched_title = excluded.matched_title,
-                settled_by    = excluded.settled_by,
-                resolved_at   = excluded.resolved_at
+                app_id         = excluded.app_id,
+                matched_title  = excluded.matched_title,
+                artwork_app_id = excluded.artwork_app_id,
+                settled_by     = excluded.settled_by,
+                resolved_at    = excluded.resolved_at
             "#,
         )
         .bind(game_id)
         .bind(app_id)
         .bind(matched_title)
+        .bind(artwork_app_id)
         .bind(settled_by)
         .bind(now_rfc3339())
         .execute(&self.pool)

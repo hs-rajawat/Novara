@@ -31,6 +31,7 @@
 //! resolver fingerprint means adding it later re-opens every past non-match
 //! automatically.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -44,6 +45,11 @@ use crate::metadata::throttle::Throttle;
 /// `ISteamApps/GetAppList`, which would have allowed fully offline matching from a
 /// single snapshot, returns 404 and is not available.
 const STORE_SEARCH_URL: &str = "https://store.steampowered.com/api/storesearch/";
+
+/// Used only to ask whether a matched app is a DLC and, if so, what its base game
+/// is. The text provider reads the same endpoint for descriptions; the two are
+/// separate passes and neither depends on the other's request.
+const APPDETAILS_URL: &str = "https://store.steampowered.com/api/appdetails";
 
 /// Country and language are pinned rather than taken from the user's locale, so
 /// the same library resolves to the same app-ids on every machine. A locale-varying
@@ -61,8 +67,15 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// source. Every previously recorded outcome, including non-matches, is then
 /// re-opened on the next sweep with no manual repair. Leave it alone for changes
 /// that cannot alter a result.
+///
+/// # History
+///
+/// * **2** — records a DLC match's base game for artwork. Existing matches carry
+///   no `artwork_app_id`, and the value can only be obtained from the network, so
+///   re-resolution is the backfill.
+/// * **1** — initial.
 pub const RESOLVER_CODE: &str = "steam_title_search";
-pub const RESOLVER_EPOCH: u32 = 1;
+pub const RESOLVER_EPOCH: u32 = 2;
 
 pub fn fingerprint() -> String {
     format!("{RESOLVER_CODE}/{RESOLVER_EPOCH}")
@@ -91,7 +104,13 @@ struct SearchResponse {
 /// into a permanent verdict. Only the two real answers are recorded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TitleSearchOutcome {
-    Matched { app_id: String, matched_title: String },
+    Matched {
+        app_id: String,
+        matched_title: String,
+        /// The base game whose artwork this match should borrow, when the match is
+        /// a DLC. `None` for an ordinary match.
+        artwork_app_id: Option<String>,
+    },
     NoMatch,
     Unavailable,
 }
@@ -209,13 +228,95 @@ impl SteamTitleSearch {
         };
 
         match choose_match(title, &parsed.items) {
-            Some(item) => TitleSearchOutcome::Matched {
-                app_id: item.id.to_string(),
-                matched_title: item.name.clone(),
-            },
+            Some(item) => {
+                let app_id = item.id.to_string();
+                // A correct match can still be a DLC — "Dying Light The Following"
+                // *is* the name of one — and a DLC app-id has no library artwork of
+                // its own. Find its base game so the artwork lookup has somewhere
+                // to go. Costs one extra request per newly matched game, once,
+                // because the answer is cached.
+                let artwork_app_id = self.artwork_parent_of(&app_id).await;
+                TitleSearchOutcome::Matched {
+                    app_id,
+                    matched_title: item.name.clone(),
+                    artwork_app_id,
+                }
+            }
             None => TitleSearchOutcome::NoMatch,
         }
     }
+
+    /// The base game to borrow artwork from, if `app_id` is a DLC.
+    ///
+    /// Returns `None` for an ordinary app, and also whenever the question cannot
+    /// be answered: a failure here must not lose the match itself, which is
+    /// already correct and useful without a fallback.
+    async fn artwork_parent_of(&self, app_id: &str) -> Option<String> {
+        let response = {
+            let _slot = self.throttle.acquire().await;
+            self.client
+                .get(APPDETAILS_URL)
+                .query(&[("appids", app_id), ("l", SEARCH_LANG)])
+                .timeout(REQUEST_TIMEOUT)
+                .send()
+                .await
+        };
+        let body = match response {
+            Ok(r) if r.status().is_success() => r.text().await.ok()?,
+            Ok(r) => {
+                warn!(app_id, status = %r.status(), "appdetails rejected while checking for a DLC parent");
+                return None;
+            }
+            Err(e) => {
+                warn!(app_id, error = %e, "appdetails unreachable while checking for a DLC parent");
+                return None;
+            }
+        };
+
+        let parsed: HashMap<String, AppDetailsEnvelope> = serde_json::from_str(&body).ok()?;
+        parent_app_id(parsed.get(app_id)?)
+    }
+}
+
+/// `appdetails` reports a DLC's base game in `fullgame`. Only the two fields this
+/// needs are modelled; the payload is large and the rest is the text provider's
+/// concern.
+#[derive(Debug, Deserialize)]
+struct AppDetailsEnvelope {
+    #[serde(default)]
+    data: Option<AppDetailsData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AppDetailsData {
+    #[serde(default)]
+    r#type: Option<String>,
+    #[serde(default)]
+    fullgame: Option<FullGame>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FullGame {
+    /// A string in the payload, not a number, unlike `steam_appid`.
+    #[serde(default)]
+    appid: Option<String>,
+}
+
+/// The base game's app-id, but only for an entry that really is a DLC.
+///
+/// The `type` check matters: `fullgame` also appears on demos and other
+/// derivative entries, and borrowing artwork is only justified where the entry is
+/// a component of the base game rather than a separate product.
+fn parent_app_id(envelope: &AppDetailsEnvelope) -> Option<String> {
+    let data = envelope.data.as_ref()?;
+    if data.r#type.as_deref() != Some("dlc") {
+        return None;
+    }
+    let parent = data.fullgame.as_ref()?.appid.as_deref()?.trim();
+    if parent.is_empty() {
+        return None;
+    }
+    Some(parent.to_string())
 }
 
 #[cfg(test)]

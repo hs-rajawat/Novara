@@ -59,7 +59,7 @@ async fn a_match_round_trips_with_its_provenance() {
     let db = test_db().await;
     let game = seed_epic_game(&db, "Dying Light The Following").await;
 
-    db.record_steam_title_match(&game, Some("325724"), Some("Dying Light: The Following"), RESOLVER)
+    db.record_steam_title_match(&game, Some("325724"), Some("Dying Light: The Following"), None, RESOLVER)
         .await
         .unwrap();
 
@@ -80,7 +80,7 @@ async fn a_non_match_is_recorded_as_an_answer_not_an_absence() {
     let db = test_db().await;
     let game = seed_epic_game(&db, "Fortnite").await;
 
-    db.record_steam_title_match(&game, None, None, RESOLVER)
+    db.record_steam_title_match(&game, None, None, None, RESOLVER)
         .await
         .unwrap();
 
@@ -100,7 +100,7 @@ async fn a_half_recorded_outcome_is_rejected_by_the_schema() {
 
     for (app_id, matched_title) in [(Some("220"), None), (None, Some("Half-Life 2"))] {
         let result = db
-            .record_steam_title_match(&game, app_id, matched_title, RESOLVER)
+            .record_steam_title_match(&game, app_id, matched_title, None, RESOLVER)
             .await;
         assert!(
             result.is_err(),
@@ -114,10 +114,10 @@ async fn a_later_search_supersedes_an_earlier_one() {
     let db = test_db().await;
     let game = seed_epic_game(&db, "Improved Later").await;
 
-    db.record_steam_title_match(&game, None, None, "steam_title_search/1")
+    db.record_steam_title_match(&game, None, None, None, "steam_title_search/1")
         .await
         .unwrap();
-    db.record_steam_title_match(&game, Some("1174180"), Some("Red Dead Redemption 2"), "steam_title_search/2")
+    db.record_steam_title_match(&game, Some("1174180"), Some("Red Dead Redemption 2"), None, "steam_title_search/2")
         .await
         .unwrap();
 
@@ -131,6 +131,64 @@ async fn a_later_search_supersedes_an_earlier_one() {
         .await
         .unwrap();
     assert_eq!(rows, 1, "one outcome per game, not a history");
+}
+
+/// A DLC match records the base game its artwork should come from, while the match
+/// itself stays the DLC — that is the correct answer and what the description
+/// should come from.
+#[tokio::test]
+async fn a_dlc_match_records_the_base_game_for_artwork() {
+    let db = test_db().await;
+    let game = seed_epic_game(&db, "Dying Light The Following").await;
+
+    db.record_steam_title_match(
+        &game,
+        Some("325724"),
+        Some("Dying Light: The Following"),
+        Some("239140"),
+        RESOLVER,
+    )
+    .await
+    .unwrap();
+
+    let found = db.steam_title_match(&game).await.unwrap().unwrap();
+    assert_eq!(found.app_id.as_deref(), Some("325724"), "the match is the DLC");
+    assert_eq!(
+        found.artwork_app_id.as_deref(),
+        Some("239140"),
+        "and the artwork falls back to its base game"
+    );
+}
+
+/// An ordinary match borrows nothing.
+#[tokio::test]
+async fn an_ordinary_match_records_no_artwork_fallback() {
+    let db = test_db().await;
+    let game = seed_epic_game(&db, "Alan Wake").await;
+    db.record_steam_title_match(&game, Some("108710"), Some("Alan Wake"), None, RESOLVER)
+        .await
+        .unwrap();
+
+    let found = db.steam_title_match(&game).await.unwrap().unwrap();
+    assert_eq!(found.artwork_app_id, None);
+}
+
+/// A re-resolution that no longer finds a parent must clear the old one, not leave
+/// a stale fallback behind.
+#[tokio::test]
+async fn a_later_search_clears_a_previous_artwork_fallback() {
+    let db = test_db().await;
+    let game = seed_epic_game(&db, "Reclassified").await;
+    db.record_steam_title_match(&game, Some("1"), Some("X"), Some("999"), "r/1")
+        .await
+        .unwrap();
+
+    db.record_steam_title_match(&game, Some("1"), Some("X"), None, "r/2")
+        .await
+        .unwrap();
+
+    let found = db.steam_title_match(&game).await.unwrap().unwrap();
+    assert_eq!(found.artwork_app_id, None);
 }
 
 // ── which games get searched ─────────────────────────────────────────────
@@ -172,10 +230,10 @@ async fn a_game_already_settled_by_this_resolver_is_not_searched_again() {
     let db = test_db().await;
     let matched = seed_epic_game(&db, "Matched").await;
     let unmatched = seed_epic_game(&db, "Unmatched").await;
-    db.record_steam_title_match(&matched, Some("1"), Some("Matched"), RESOLVER)
+    db.record_steam_title_match(&matched, Some("1"), Some("Matched"), None, RESOLVER)
         .await
         .unwrap();
-    db.record_steam_title_match(&unmatched, None, None, RESOLVER)
+    db.record_steam_title_match(&unmatched, None, None, None, RESOLVER)
         .await
         .unwrap();
 
@@ -192,7 +250,7 @@ async fn a_game_already_settled_by_this_resolver_is_not_searched_again() {
 async fn a_new_resolver_re_opens_previous_outcomes() {
     let db = test_db().await;
     let game = seed_epic_game(&db, "Previously Unmatched").await;
-    db.record_steam_title_match(&game, None, None, "steam_title_search/1")
+    db.record_steam_title_match(&game, None, None, None, "steam_title_search/1")
         .await
         .unwrap();
 
@@ -226,7 +284,7 @@ async fn hidden_games_are_not_searched() {
 async fn an_outcome_is_removed_with_its_game() {
     let db = test_db().await;
     let game = seed_epic_game(&db, "Doomed").await;
-    db.record_steam_title_match(&game, Some("1"), Some("Doomed"), RESOLVER)
+    db.record_steam_title_match(&game, Some("1"), Some("Doomed"), None, RESOLVER)
         .await
         .unwrap();
 

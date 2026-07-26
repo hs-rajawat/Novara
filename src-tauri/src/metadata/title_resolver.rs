@@ -65,12 +65,14 @@ impl TitleResolver {
                 TitleSearchOutcome::Matched {
                     app_id,
                     matched_title,
+                    artwork_app_id,
                 } => {
                     self.db
                         .record_steam_title_match(
                             &game_id,
                             Some(&app_id),
                             Some(&matched_title),
+                            artwork_app_id.as_deref(),
                             &fingerprint,
                         )
                         .await?;
@@ -80,7 +82,7 @@ impl TitleResolver {
                     // Recorded so the same question is not asked again every
                     // sweep. This is the negative cache the ledger exists for.
                     self.db
-                        .record_steam_title_match(&game_id, None, None, &fingerprint)
+                        .record_steam_title_match(&game_id, None, None, None, &fingerprint)
                         .await?;
                     report.unmatched += 1;
                 }
@@ -140,12 +142,14 @@ impl TitleResolver {
             TitleSearchOutcome::Matched {
                 app_id,
                 matched_title,
+                artwork_app_id,
             } => {
                 self.db
                     .record_steam_title_match(
                         game_id,
                         Some(&app_id),
                         Some(&matched_title),
+                        artwork_app_id.as_deref(),
                         &fingerprint,
                     )
                     .await?;
@@ -153,7 +157,7 @@ impl TitleResolver {
             }
             TitleSearchOutcome::NoMatch => {
                 self.db
-                    .record_steam_title_match(game_id, None, None, &fingerprint)
+                    .record_steam_title_match(game_id, None, None, None, &fingerprint)
                     .await?;
                 Ok(false)
             }

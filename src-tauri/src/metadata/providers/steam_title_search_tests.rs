@@ -205,6 +205,74 @@ async fn a_blank_title_is_never_searched() {
     );
 }
 
+// ── DLC parent detection ────────────────────────────────────────────────
+
+/// The shape `appdetails` really returns, confirmed against app 325724:
+/// `type` is "dlc" and `fullgame.appid` is a *string*, unlike `steam_appid`.
+fn envelope(json: &str) -> AppDetailsEnvelope {
+    serde_json::from_str(json).expect("parse envelope")
+}
+
+#[test]
+fn a_dlc_reports_its_base_game() {
+    let e = envelope(
+        r#"{"success":true,"data":{"type":"dlc","name":"Dying Light: The Following",
+            "steam_appid":325724,"fullgame":{"appid":"239140","name":"Dying Light"}}}"#,
+    );
+    assert_eq!(parent_app_id(&e).as_deref(), Some("239140"));
+}
+
+/// An ordinary game has no parent, and must not borrow anyone's artwork.
+#[test]
+fn a_base_game_has_no_parent() {
+    let e = envelope(r#"{"success":true,"data":{"type":"game","steam_appid":239140}}"#);
+    assert_eq!(parent_app_id(&e), None);
+}
+
+/// `fullgame` also appears on demos and other derivative entries. Borrowing
+/// artwork is only justified for a DLC, which is a component of the base game
+/// rather than a separate product with its own store presence.
+#[test]
+fn a_non_dlc_with_a_fullgame_reference_is_not_treated_as_one() {
+    let e = envelope(
+        r#"{"success":true,"data":{"type":"demo","fullgame":{"appid":"239140","name":"Dying Light"}}}"#,
+    );
+    assert_eq!(
+        parent_app_id(&e),
+        None,
+        "only a DLC may borrow its base game's artwork"
+    );
+}
+
+#[test]
+fn a_dlc_without_a_usable_parent_reference_has_no_parent() {
+    for json in [
+        r#"{"success":true,"data":{"type":"dlc"}}"#,
+        r#"{"success":true,"data":{"type":"dlc","fullgame":{}}}"#,
+        r#"{"success":true,"data":{"type":"dlc","fullgame":{"appid":""}}}"#,
+        r#"{"success":true,"data":{"type":"dlc","fullgame":{"appid":"   "}}}"#,
+    ] {
+        assert_eq!(parent_app_id(&envelope(json)), None, "for {json}");
+    }
+}
+
+/// A failed lookup returns `success: false` with no `data` at all.
+#[test]
+fn an_unsuccessful_lookup_has_no_parent() {
+    assert_eq!(parent_app_id(&envelope(r#"{"success":false}"#)), None);
+}
+
+/// Unmodelled fields must not break parsing: this reads two fields out of a large
+/// payload that Valve changes without notice.
+#[test]
+fn unexpected_fields_are_ignored() {
+    let e = envelope(
+        r#"{"success":true,"data":{"type":"dlc","fullgame":{"appid":"239140","name":"X",
+            "something_new":42},"a_new_top_level_field":{"nested":[1,2,3]}}}"#,
+    );
+    assert_eq!(parent_app_id(&e).as_deref(), Some("239140"));
+}
+
 // ── fingerprint ─────────────────────────────────────────────────────────
 
 /// The fingerprint is what re-opens past conclusions, so it has to change with

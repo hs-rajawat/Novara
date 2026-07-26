@@ -1,0 +1,19 @@
+-- The base game to borrow artwork from, when a matched title is a DLC.
+--
+-- A title can match Steam's DLC entry legitimately: "Dying Light The Following"
+-- *is* the name of a DLC, and matching it is correct. But a DLC app-id has no
+-- library artwork on the CDN — measured for 325724, all three of
+-- library_600x900.jpg, library_hero.jpg and logo.png return 404, while its parent
+-- 239140 returns 200 for all three — so such a game ends up with metadata and no
+-- artwork.
+--
+-- `app_id` therefore stays the match, because it is the right answer and it is
+-- what the description should come from. This column is consulted only when
+-- looking for artwork, and only when it is set: NULL means the match is not a DLC
+-- and there is nothing to fall back to.
+--
+-- 0010 is already committed and therefore immutable, hence a second migration
+-- rather than an edit. Existing rows are backfilled by bumping the resolver's
+-- epoch, which re-opens every previous match on the next sweep; no data fix is
+-- needed here because the value can only be obtained from the network.
+ALTER TABLE steam_title_matches ADD COLUMN artwork_app_id TEXT;

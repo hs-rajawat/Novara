@@ -50,7 +50,7 @@ async fn a_resolved_match_gives_an_epic_game_a_steam_identity() {
     );
     assert_eq!(before.source_app_id("epic"), Some("EpicAppName"));
 
-    db.record_steam_title_match(&game, Some("108710"), Some("Alan Wake"), "r/1")
+    db.record_steam_title_match(&game, Some("108710"), Some("Alan Wake"), None, "r/1")
         .await
         .unwrap();
 
@@ -68,7 +68,7 @@ async fn a_resolved_match_gives_an_epic_game_a_steam_identity() {
 async fn a_recorded_non_match_adds_no_identifier() {
     let db = test_db().await;
     let game = seed_epic_game(&db, "Fortnite").await;
-    db.record_steam_title_match(&game, None, None, "r/1")
+    db.record_steam_title_match(&game, None, None, None, "r/1")
         .await
         .unwrap();
 
@@ -88,7 +88,7 @@ async fn a_real_steam_app_id_is_never_displaced_by_a_title_match() {
         .execute(&db.pool)
         .await
         .unwrap();
-    db.record_steam_title_match(&game, Some("999999"), Some("Wrong Game"), "r/1")
+    db.record_steam_title_match(&game, Some("999999"), Some("Wrong Game"), None, "r/1")
         .await
         .unwrap();
 
@@ -118,7 +118,7 @@ async fn a_real_steam_app_id_is_never_displaced_by_a_title_match() {
 async fn building_an_identity_needs_no_network() {
     let db = test_db().await;
     let game = seed_epic_game(&db, "Cached Already").await;
-    db.record_steam_title_match(&game, Some("1"), Some("Cached Already"), "r/1")
+    db.record_steam_title_match(&game, Some("1"), Some("Cached Already"), None, "r/1")
         .await
         .unwrap();
 
@@ -203,7 +203,7 @@ async fn a_refresh_of_an_unknown_game_is_a_no_op() {
 async fn the_pass_settles_games_under_the_resolvers_own_fingerprint() {
     let db = test_db().await;
     let game = seed_epic_game(&db, "Already Settled").await;
-    db.record_steam_title_match(&game, None, None, &steam_title_search::fingerprint())
+    db.record_steam_title_match(&game, None, None, None, &steam_title_search::fingerprint())
         .await
         .unwrap();
 
