@@ -218,7 +218,12 @@ impl ArtworkProvider for SteamCdnProvider {
     }
 
     async fn resolve_artwork(&self, ctx: &LookupContext<'_>) -> Lookup<Vec<AssetDescriptor>> {
-        let Some(app_id) = ctx.identity.source_app_id("steam") else {
+        // `artwork_app_id`, not `source_app_id`: when the game's identity was
+        // resolved from a title that turned out to name a DLC, the DLC has no
+        // library artwork of its own and this points at its base game. Falls back
+        // to the ordinary app-id in every other case, which is all of them for a
+        // real Steam installation.
+        let Some(app_id) = ctx.identity.artwork_app_id("steam") else {
             return Lookup::Unsupported;
         };
         if !ctx.allow_network {

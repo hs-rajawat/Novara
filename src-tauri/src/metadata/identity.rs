@@ -32,15 +32,22 @@ pub async fn identity_for(db: &Db, game: &Game) -> AppResult<GameIdentity> {
         .iter()
         .any(|id| matches!(id, GameIdentifier::SourceAppId { source, .. } if source == "steam"))
     {
-        if let Some(app_id) = db
-            .steam_title_match(&game.id)
-            .await?
-            .and_then(|m| m.app_id)
-        {
-            identifiers.push(GameIdentifier::SourceAppId {
-                source: "steam".to_string(),
-                id: app_id,
-            });
+        if let Some(matched) = db.steam_title_match(&game.id).await? {
+            if let Some(app_id) = matched.app_id {
+                identifiers.push(GameIdentifier::SourceAppId {
+                    source: "steam".to_string(),
+                    id: app_id,
+                });
+                // A DLC match is correct but has no library artwork of its own, so
+                // artwork lookups are pointed at its base game while the identity
+                // — and the description that comes from it — stays the DLC.
+                if let Some(artwork_app_id) = matched.artwork_app_id {
+                    identifiers.push(GameIdentifier::SourceArtworkAppId {
+                        source: "steam".to_string(),
+                        id: artwork_app_id,
+                    });
+                }
+            }
         }
     }
 

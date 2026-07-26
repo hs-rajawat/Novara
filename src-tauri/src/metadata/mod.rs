@@ -70,6 +70,18 @@ pub enum GameIdentifier {
     /// A launcher-assigned id — Steam's numeric appid, Epic's `AppName`
     /// catalog id, etc. `source` matches `sources.code`.
     SourceAppId { source: String, id: String },
+    /// An id to use *only* when looking for artwork, overriding
+    /// [`Self::SourceAppId`] for that purpose alone.
+    ///
+    /// Exists because a correct match is not always a good artwork source: a
+    /// title that matches a DLC entry matches it rightly, but a DLC has no
+    /// library artwork of its own, so the artwork lookup borrows its base game's
+    /// while the identity — and therefore the description — stays the DLC.
+    ///
+    /// Deliberately a separate variant rather than a flag on `SourceAppId`: text
+    /// and artwork providers read different things here, and a single field they
+    /// both consumed could not express that.
+    SourceArtworkAppId { source: String, id: String },
     /// Reserved for a future move-detection-style provider; unused by any
     /// v1 provider but requires no interface change to adopt.
     #[allow(dead_code)]
@@ -97,6 +109,24 @@ impl GameIdentity {
             GameIdentifier::SourceAppId { source: s, id } if s == source => Some(id.as_str()),
             _ => None,
         })
+    }
+
+    /// The id an **artwork** provider should use for this source.
+    ///
+    /// Prefers a [`GameIdentifier::SourceArtworkAppId`] override and falls back to
+    /// the ordinary app-id, so a provider needs no knowledge of why an override
+    /// exists. Text providers deliberately do not call this: a DLC's description
+    /// should be the DLC's own.
+    pub fn artwork_app_id(&self, source: &str) -> Option<&str> {
+        self.identifiers
+            .iter()
+            .find_map(|id| match id {
+                GameIdentifier::SourceArtworkAppId { source: s, id } if s == source => {
+                    Some(id.as_str())
+                }
+                _ => None,
+            })
+            .or_else(|| self.source_app_id(source))
     }
 }
 

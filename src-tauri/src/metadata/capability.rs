@@ -48,6 +48,10 @@
 ///
 /// # History
 ///
+/// * **3** — DLC artwork fallback. A game whose title resolved to a DLC entry can
+///   now obtain artwork from the DLC's base game, so slots settled `not_found`
+///   under epoch 2 — correctly, because the DLC itself has none — are answerable
+///   again.
 /// * **2** — title-based resolution. `steam_local` and `steam_cdn` can now answer
 ///   for Epic and manually-imported games, because those games' identities carry a
 ///   Steam app-id resolved from their title. The provider set is byte-for-byte
@@ -56,7 +60,7 @@
 ///   capability that no longer describes reality. This is the case the epoch
 ///   exists for, and it was anticipated in the note above.
 /// * **1** — initial.
-pub const CAPABILITY_EPOCH: u32 = 2;
+pub const CAPABILITY_EPOCH: u32 = 3;
 
 /// A stable identifier for a set of provider codes.
 ///
@@ -155,5 +159,17 @@ mod tests {
             "every artwork slot skipped as unsupported must be reconsidered now \
              that a Steam app-id can be resolved from the title"
         );
+    }
+
+    /// And the same for slots settled `not_found` before the DLC artwork fallback:
+    /// they were settled truthfully — the DLC really has no artwork — but its base
+    /// game does, so the conclusion no longer holds.
+    #[test]
+    fn slots_settled_before_the_dlc_artwork_fallback_are_reopened() {
+        let current = fingerprint(["epic_catalog", "steam_cdn", "steam_local"]);
+        assert!(is_stale(
+            Some("e2:epic_catalog,steam_cdn,steam_local"),
+            &current
+        ));
     }
 }

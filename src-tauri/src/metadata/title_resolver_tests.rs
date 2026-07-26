@@ -127,6 +127,82 @@ async fn building_an_identity_needs_no_network() {
     assert_eq!(identity.source_app_id("steam"), Some("1"));
 }
 
+/// A DLC match gives artwork providers the base game while leaving the identity —
+/// and therefore the description — as the DLC. This is the split the whole
+/// fallback exists to express.
+#[tokio::test]
+async fn a_dlc_match_points_artwork_at_the_base_game_but_not_text() {
+    let db = test_db().await;
+    let game = seed_epic_game(&db, "Dying Light The Following").await;
+    db.record_steam_title_match(
+        &game,
+        Some("325724"),
+        Some("Dying Light: The Following"),
+        Some("239140"),
+        "r/2",
+    )
+    .await
+    .unwrap();
+
+    let identity = identity_for(&db, &game_row(&db, &game).await).await.unwrap();
+    assert_eq!(
+        identity.source_app_id("steam"),
+        Some("325724"),
+        "the match is the DLC, and its description should be the DLC's"
+    );
+    assert_eq!(
+        identity.artwork_app_id("steam"),
+        Some("239140"),
+        "but a DLC has no library artwork, so artwork comes from the base game"
+    );
+}
+
+/// Without a fallback, artwork and text agree — so no provider needs to know
+/// whether an override exists.
+#[tokio::test]
+async fn without_a_fallback_artwork_uses_the_ordinary_app_id() {
+    let db = test_db().await;
+    let game = seed_epic_game(&db, "Alan Wake").await;
+    db.record_steam_title_match(&game, Some("108710"), Some("Alan Wake"), None, "r/2")
+        .await
+        .unwrap();
+
+    let identity = identity_for(&db, &game_row(&db, &game).await).await.unwrap();
+    assert_eq!(identity.source_app_id("steam"), Some("108710"));
+    assert_eq!(identity.artwork_app_id("steam"), Some("108710"));
+}
+
+/// A real Steam installation is never affected by any of this.
+#[tokio::test]
+async fn a_real_steam_game_uses_its_own_app_id_for_both() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Half-Life 2").await;
+    seed_installation(&db, &game, "steam", "C:/steam/hl2b", None, true, "installed").await;
+    sqlx::query("UPDATE game_installations SET source_app_id = '220' WHERE game_id = ?1")
+        .bind(&game)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let identity = identity_for(&db, &game_row(&db, &game).await).await.unwrap();
+    assert_eq!(identity.source_app_id("steam"), Some("220"));
+    assert_eq!(identity.artwork_app_id("steam"), Some("220"));
+}
+
+/// A source with no identity at all yields nothing, rather than borrowing another
+/// source's override.
+#[tokio::test]
+async fn an_unknown_source_has_no_artwork_id() {
+    let db = test_db().await;
+    let game = seed_epic_game(&db, "Nothing Known").await;
+    db.record_steam_title_match(&game, Some("1"), Some("X"), Some("2"), "r/2")
+        .await
+        .unwrap();
+
+    let identity = identity_for(&db, &game_row(&db, &game).await).await.unwrap();
+    assert_eq!(identity.artwork_app_id("gog"), None);
+}
+
 // ── the resolution pass ─────────────────────────────────────────────────
 
 fn resolver(db: &crate::db::Db) -> TitleResolver {

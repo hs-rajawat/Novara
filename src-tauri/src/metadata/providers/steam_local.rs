@@ -61,7 +61,9 @@ impl ArtworkProvider for SteamLocalProvider {
         false
     }
     async fn resolve_artwork(&self, ctx: &LookupContext<'_>) -> Lookup<Vec<AssetDescriptor>> {
-        let Some(app_id) = ctx.identity.source_app_id("steam") else {
+        // See `steam_cdn`: a title that resolved to a DLC borrows its base game's
+        // artwork, and Steam's local cache is keyed the same way.
+        let Some(app_id) = ctx.identity.artwork_app_id("steam") else {
             return Lookup::Unsupported;
         };
         let Some(dir) = self.cache_dir(app_id) else {
