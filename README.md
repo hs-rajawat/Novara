@@ -26,6 +26,18 @@ Just your games.**
 
 ---
 
+## 🔒 Privacy
+
+NOVARA is built with a local-first philosophy.
+
+- No account required
+- No telemetry
+- No cloud dependency
+- Metadata networking can be disabled
+- Your library stays on your computer
+
+---
+
 ## 📂 First-Class Support for Manual Games
 
 Most launchers either ignore manually installed games or treat them as shortcuts.
@@ -36,7 +48,6 @@ NOVARA gives them the same experience as launcher-managed games.
 
   **✨ Features**
   
-- 🔒 Privacy (NOVARA is designed to work locally -> No account required)
 - 🎮 Automatic library integration
 - 🚀 One-click launching
 - 📊 Playtime tracking
@@ -48,8 +59,6 @@ NOVARA gives them the same experience as launcher-managed games.
 - 🔒 Fully local-first — no launcher required
 
 Whether a game came from Steam, itch.io, GOG installers, old DVDs, or any standalone executable, it belongs in your library.
-
-No launcher required.
 
 ---
 
