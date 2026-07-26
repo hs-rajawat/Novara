@@ -48,6 +48,10 @@
   /* ── layout ────────────────────────────────────────────────── */
   --sidebar-w: 216px;
   --topbar-h: 58px;
+  /* How far the Game Details cover poster is pulled up over the hero banner.
+     Read by both the poster's negative margin and the hero logo's offset, which
+     must clear it — see `.details-hero-logo`. */
+  --details-overlap: 112px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;

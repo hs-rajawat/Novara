@@ -1460,10 +1460,24 @@ a.list-row {
               rgba(7, 10, 18, 0.55) 72%, rgba(7, 10, 18, 0.94) 100%);
 }
 
+/* Sits inside the hero, above the band the cover poster occupies.
+ *
+ * The poster is pulled `--details-overlap` up into the hero's bottom-left, which
+ * is where this logo used to sit — and because `.details-hero` is
+ * `position: relative` with `z-index: auto` it creates no stacking context, so
+ * this element's `z-index: 2` outranked `.details-head`'s `z-index: 1` in the
+ * root context and painted the logo on top of the cover art. The cover often
+ * contains the game's logo already, so the result was a doubled, cluttered
+ * poster.
+ *
+ * Raising the offset past the overlap keeps the hero's presentation as it was —
+ * same corner, same size, same drop shadow — while leaving the cover art
+ * completely unobscured. Giving `.details-head` a higher z-index instead would
+ * have hidden the logo behind the poster and clipped it. */
 .details-hero-logo {
   position: absolute;
   left: 20px;
-  bottom: 18px;
+  bottom: calc(var(--details-overlap) + 18px);
   z-index: 2;
   max-width: min(320px, 46%);
   max-height: 96px;
@@ -1504,7 +1518,7 @@ a.list-row {
   align-items: flex-end;
   gap: 26px;
   flex-wrap: wrap;
-  margin: -112px 24px 30px;
+  margin: calc(-1 * var(--details-overlap)) 24px 30px;
 }
 
 .details-cover {
