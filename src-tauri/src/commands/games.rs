@@ -495,6 +495,10 @@ pub async fn refresh_metadata(
     state: State<'_, Arc<AppState>>,
 ) -> AppResult<RefreshMetadataResult> {
     let allow_network = state.allow_metadata_network().await?;
+    // Put the title question again before refetching, so a game that could not be
+    // identified when it was scanned — or that Steam did not know about then — can
+    // become resolvable without the user waiting for another scan.
+    state.titles.resolve_one(&game_id, allow_network).await?;
     let text_updated = state.metadata.refresh_game(&game_id, allow_network).await?;
     let artwork_updated = state.artwork.refresh_game(&game_id, allow_network).await?;
     Ok(RefreshMetadataResult {

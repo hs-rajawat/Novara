@@ -61,6 +61,11 @@ fn spawn_post_scan_fill(state: Arc<AppState>) {
                 return;
             }
         };
+        // Resolve titles first: an Epic or manual game has no Steam app-id, so
+        // without this both fills below find no provider able to answer for it.
+        if let Err(e) = state.titles.resolve_missing(allow_network).await {
+            warn!(error = %e, "post-scan title resolution failed");
+        }
         if let Err(e) = state.metadata.fill_missing(allow_network).await {
             warn!(error = %e, "post-scan metadata fill failed");
         }

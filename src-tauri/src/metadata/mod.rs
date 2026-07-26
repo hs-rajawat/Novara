@@ -36,11 +36,14 @@ pub mod providers;
 pub mod store;
 pub mod text_service;
 pub mod throttle;
+pub mod title_resolver;
 
 #[cfg(test)]
 mod privacy_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod title_resolver_tests;
 
 /// Descriptive (non-visual) metadata a `MetadataTextProvider` can supply.
 /// Anything left `None`/empty is simply not written over the existing value.

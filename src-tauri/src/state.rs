@@ -29,6 +29,9 @@ pub struct AppState {
     pub integrity: Arc<IntegrityService>,
     pub metadata: Arc<MetadataService>,
     pub artwork: Arc<ArtworkService>,
+    /// Resolves Steam app-ids from titles, so Epic and manual games can use the
+    /// Steam-backed providers.
+    pub titles: Arc<crate::metadata::title_resolver::TitleResolver>,
     pub app_data_dir: PathBuf,
     /// Handles for the long-lived background loops (playtime watcher, periodic
     /// integrity sweep) so shutdown can stop them deliberately instead of
@@ -59,6 +62,13 @@ impl AppState {
         let metadata = Arc::new(MetadataService::new(
             db.clone(),
             bus.clone(),
+            http_client.clone(),
+            throttle.clone(),
+        ));
+        // Shares the same client and throttle as the fills: a title search is
+        // outbound traffic like any other and must count against the same budget.
+        let titles = Arc::new(crate::metadata::title_resolver::TitleResolver::new(
+            db.clone(),
             http_client.clone(),
             throttle.clone(),
         ));
@@ -99,6 +109,7 @@ impl AppState {
             integrity,
             metadata,
             artwork,
+            titles,
             app_data_dir,
             background: Mutex::new(vec![watcher]),
         })

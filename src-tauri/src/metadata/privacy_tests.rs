@@ -223,6 +223,73 @@ async fn an_explicit_refresh_opens_no_connection_when_network_is_not_allowed() {
     );
 }
 
+// ── title resolution ────────────────────────────────────────────────────
+
+/// Title resolution is a network caller like any other, so the same guarantee
+/// applies. Added with the feature rather than after it: the point of counting
+/// connections instead of inspecting flags is that a new caller cannot quietly
+/// escape the gate, and that only holds if new callers are actually covered.
+#[tokio::test]
+async fn title_resolution_opens_no_connection_when_network_is_not_allowed() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Alan Wake").await;
+    crate::test_support::seed_installation(
+        &db,
+        &game,
+        "epic",
+        "C:/epic/Alan Wake",
+        Some("g.exe"),
+        true,
+        "installed",
+    )
+    .await;
+    let (addr, connections) = counting_listener().await;
+    let resolver = crate::metadata::title_resolver::TitleResolver::new(
+        db.clone(),
+        proxied_client(addr),
+        throttle(),
+    );
+
+    resolver.resolve_missing(false).await.expect("pass");
+    resolver.resolve_one(&game, false).await.expect("refresh");
+
+    assert_eq!(
+        connections.load(Ordering::SeqCst),
+        0,
+        "resolving a title is a network call, and the user has metadata disabled"
+    );
+}
+
+#[tokio::test]
+async fn title_resolution_does_reach_the_network_when_allowed() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Alan Wake").await;
+    crate::test_support::seed_installation(
+        &db,
+        &game,
+        "epic",
+        "C:/epic/Alan Wake",
+        Some("g.exe"),
+        true,
+        "installed",
+    )
+    .await;
+    let (addr, connections) = counting_listener().await;
+    let resolver = crate::metadata::title_resolver::TitleResolver::new(
+        db.clone(),
+        proxied_client(addr),
+        throttle(),
+    );
+
+    resolver.resolve_missing(true).await.expect("pass");
+
+    assert!(
+        connections.load(Ordering::SeqCst) > 0,
+        "the paired test above is only meaningful if this pass really would have \
+         gone to the network"
+    );
+}
+
 // ── the gate itself ─────────────────────────────────────────────────────
 
 /// The flag the services are handed must follow the user's settings, including
