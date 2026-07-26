@@ -384,6 +384,212 @@ async fn a_discarded_launch_does_not_mark_a_game_as_playing() {
     assert_eq!(completion_state(&db, &game).await, "unplayed");
 }
 
+/// The defect this rule was rewritten for.
+///
+/// The threshold used to be applied to a single session, while the UI shows
+/// cumulative playtime — so a game could display minutes of play and still be
+/// labelled Unplayed. These are the real Red Dead Redemption 2 sessions from the
+/// library where it was found: 54s, 38s and 16s. Not one reaches the threshold;
+/// together they are 108 seconds of play the user can see on the card.
+#[tokio::test]
+async fn playtime_accumulated_across_short_sessions_marks_a_game_as_playing() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Red Dead Redemption 2").await;
+    let pt = tracker(&db).await;
+
+    for seconds in [54, 38, 16] {
+        let session = pt.start(&game, Some("rdr2.exe")).await.unwrap();
+        db.stop_session(session, seconds, 0).await.unwrap();
+    }
+
+    assert_eq!(
+        completion_state(&db, &game).await,
+        "playing",
+        "no single session reached the threshold, but the accumulated playtime did \
+         — and the accumulated total is what the library displays"
+    );
+}
+
+/// The state and the total it is derived from are written in one statement, so
+/// they cannot disagree: crossing the threshold and the playtime that crossed it
+/// are always observable together.
+#[tokio::test]
+async fn the_promoting_total_is_visible_with_the_promotion() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Atomic").await;
+    let pt = tracker(&db).await;
+
+    let session = pt.start(&game, Some("g.exe")).await.unwrap();
+    db.stop_session(session, 59, 0).await.unwrap();
+    let (state, total) = state_and_total(&db, &game).await;
+    assert_eq!(
+        (state.as_str(), total),
+        ("unplayed", 59),
+        "one second short of the threshold"
+    );
+
+    let session = pt.start(&game, Some("g.exe")).await.unwrap();
+    db.stop_session(session, 1, 0).await.unwrap();
+    let (state, total) = state_and_total(&db, &game).await;
+    assert_eq!(
+        (state.as_str(), total),
+        ("playing", 60),
+        "reaching the threshold exactly must promote, and the total that promoted \
+         it must be stored with it"
+    );
+}
+
+/// Accumulated *idle* time must not promote a game, however much of it there is:
+/// the rule is about playing, and the aggregate excludes idle by construction.
+#[tokio::test]
+async fn accumulated_idle_time_never_marks_a_game_as_playing() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Left Running").await;
+    let pt = tracker(&db).await;
+
+    for _ in 0..10 {
+        let session = pt.start(&game, Some("g.exe")).await.unwrap();
+        // An hour on the clock, fully idle, ten times over.
+        db.stop_session(session, 3600, 3600).await.unwrap();
+    }
+
+    let (state, total) = state_and_total(&db, &game).await;
+    assert_eq!(state, "unplayed");
+    assert_eq!(total, 0, "idle time is not credited as playtime");
+}
+
+/// Once a game has moved beyond `unplayed`, later sessions keep accumulating
+/// playtime but must never rewrite the state — including the states a user reaches
+/// *after* NOVARA promoted the game.
+#[tokio::test]
+async fn later_sessions_do_not_overwrite_a_state_reached_after_promotion() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Finished It").await;
+    let pt = tracker(&db).await;
+
+    // Played enough to be promoted automatically.
+    let session = pt.start(&game, Some("g.exe")).await.unwrap();
+    db.stop_session(session, 600, 0).await.unwrap();
+    assert_eq!(completion_state(&db, &game).await, "playing");
+
+    // The user then marks it completed and plays it again.
+    db.set_completion(&game, 100.0, "completed").await.unwrap();
+    let session = pt.start(&game, Some("g.exe")).await.unwrap();
+    db.stop_session(session, 3600, 0).await.unwrap();
+
+    let (state, total) = state_and_total(&db, &game).await;
+    assert_eq!(state, "completed", "replaying a finished game does not un-finish it");
+    assert_eq!(total, 4200, "but the playtime is still credited");
+}
+
+// ── the backfill migration ──────────────────────────────────────────────
+
+/// Path to the backfill migration, whose statement the tests below execute
+/// against seeded rows.
+///
+/// The migration itself has already run — on an empty database, where it can do
+/// nothing — by the time any fixture exists. Applying its real SQL to seeded data
+/// is the only way to assert what it will do to a user's library, and it tests the
+/// shipped statement rather than a paraphrase of it.
+fn backfill_sql() -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("migrations")
+        .join("0009_backfill_playing_state.sql");
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+/// The migration hard-codes the threshold because a committed migration cannot
+/// change. This is the guard that keeps it honest: raising the constant without
+/// deciding what should happen to already-migrated libraries fails here.
+#[test]
+fn threshold_matches_the_backfill_migration() {
+    let sql = backfill_sql();
+    let expected = format!(">= {}", crate::db::playtime::MIN_PLAYING_SECONDS);
+    assert!(
+        sql.contains(&expected),
+        "0009 must test playtime `{expected}` to match MIN_PLAYING_SECONDS; if the \
+         constant changed, add a new migration for existing libraries rather than \
+         editing this committed one"
+    );
+}
+
+/// Games played before the derived-state rule existed are corrected, and every
+/// state the user chose for themselves is left alone.
+#[tokio::test]
+async fn the_backfill_corrects_history_without_touching_user_states() {
+    let db = test_db().await;
+
+    // (title, state before, playtime, state expected after)
+    let cases = [
+        ("Long enough", "unplayed", 341, "playing"),
+        ("Exactly at the threshold", "unplayed", 60, "playing"),
+        ("Just short", "unplayed", 59, "unplayed"),
+        ("Never launched", "unplayed", 0, "unplayed"),
+        ("User finished it", "completed", 5000, "completed"),
+        ("User gave up", "abandoned", 5000, "abandoned"),
+        ("User shelved it", "backlog", 5000, "backlog"),
+        ("Already playing", "playing", 5000, "playing"),
+    ];
+
+    let mut ids = Vec::new();
+    for (title, before, playtime, _) in &cases {
+        let id = seed_game(&db, title).await;
+        sqlx::query(
+            "UPDATE games SET completion_state = ?1, total_playtime_seconds = ?2 WHERE id = ?3",
+        )
+        .bind(before)
+        .bind(*playtime as i64)
+        .bind(&id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+        ids.push(id);
+    }
+
+    sqlx::raw_sql(&backfill_sql())
+        .execute(&db.pool)
+        .await
+        .expect("apply the backfill migration");
+
+    for (id, (title, _, _, expected)) in ids.iter().zip(cases.iter()) {
+        assert_eq!(
+            &completion_state(&db, id).await,
+            expected,
+            "{title} should end up {expected}"
+        );
+    }
+}
+
+/// The backfill is a one-time correction, so running it twice must be a no-op
+/// rather than a second round of changes.
+#[tokio::test]
+async fn the_backfill_is_idempotent() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Replayed Backfill").await;
+    sqlx::query("UPDATE games SET total_playtime_seconds = 300 WHERE id = ?1")
+        .bind(&game)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    for _ in 0..2 {
+        sqlx::raw_sql(&backfill_sql()).execute(&db.pool).await.unwrap();
+    }
+
+    let (state, total) = state_and_total(&db, &game).await;
+    assert_eq!(state, "playing");
+    assert_eq!(total, 300, "the backfill must not touch playtime");
+}
+
+/// `completion_state` and the playtime it was derived from, read together.
+async fn state_and_total(db: &crate::db::Db, game_id: &str) -> (String, i64) {
+    sqlx::query_as("SELECT completion_state, total_playtime_seconds FROM games WHERE id = ?1")
+        .bind(game_id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap()
+}
+
 // ── 4.2 graceful shutdown ───────────────────────────────────────────────
 
 #[tokio::test]

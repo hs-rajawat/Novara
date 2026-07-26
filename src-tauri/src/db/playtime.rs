@@ -3,13 +3,34 @@ use crate::models::{now_rfc3339, PlaySession};
 
 use super::Db;
 
-/// Active seconds a session must credit before a game is considered "playing".
+/// Active seconds a game must have accumulated before it counts as "playing".
+///
+/// # Why a threshold at all
 ///
 /// A launch that is closed again within a few seconds — a mistake, a wrong game,
-/// a launcher that failed — should not reclassify the title as in progress. A
-/// minute is comfortably past that and still well inside any real session, so the
-/// Dashboard populates on the first genuine play without the user managing state.
-const MIN_PLAYING_SECONDS: i64 = 60;
+/// a launcher that failed to start the title — should not reclassify a game as in
+/// progress. A minute is comfortably past that and still well inside any real
+/// session, so the Dashboard populates on the first genuine play without the user
+/// having to manage state by hand.
+///
+/// # Why it is measured cumulatively
+///
+/// It was originally applied to a single session, which contradicted the UI: the
+/// library shows *total* playtime, so a game could display "2m" while every
+/// individual session fell under the threshold and the state stayed `unplayed`.
+/// That was observed in a real library — 125 seconds of Red Dead Redemption 2
+/// across sessions of 54s, 38s and 16s, displayed as played but labelled Unplayed.
+/// Judging the same number the user is shown removes the contradiction by
+/// construction.
+///
+/// # Keep this in step with the migrations
+///
+/// `migrations/0009_backfill_playing_state.sql` backfills libraries that predate
+/// this rule and necessarily hard-codes the same number, because a committed
+/// migration cannot change. `threshold_matches_the_backfill_migration` fails if
+/// the two ever diverge, so raising this value forces a deliberate decision about
+/// history rather than a silent inconsistency.
+pub const MIN_PLAYING_SECONDS: i64 = 60;
 
 impl Db {
     pub async fn start_session(&self, game_id: &str, process_name: Option<&str>) -> AppResult<i64> {
@@ -62,40 +83,39 @@ impl Db {
         .execute(&self.pool)
         .await?;
 
-        // Aggregate active playtime (duration - idle) onto the game row.
+        // Credit the session and derive `playing` in a single statement.
+        //
+        // Both halves read the same `total_playtime_seconds`, so the state can
+        // never disagree with the total it was derived from — split across two
+        // updates, a failure or a concurrent write between them could leave a game
+        // showing playtime it was not classified by.
+        //
+        // `completion_state = 'unplayed'` inside the CASE is the once-only guard,
+        // expressed in SQL rather than application logic: `completed`,
+        // `abandoned`, `backlog` and an already-promoted `playing` all fall
+        // through to `ELSE completion_state` and are left exactly as the user set
+        // them. Manual progression stays entirely under their control.
         let active = (duration_seconds - idle_seconds).max(0);
         sqlx::query(
-            "UPDATE games SET total_playtime_seconds = total_playtime_seconds + ?1 WHERE id = ?2",
+            r#"
+            UPDATE games
+            SET total_playtime_seconds = total_playtime_seconds + ?1,
+                completion_state = CASE
+                    WHEN completion_state = 'unplayed'
+                     AND total_playtime_seconds + ?1 >= ?2
+                    THEN 'playing'
+                    ELSE completion_state
+                END,
+                updated_at = ?3
+            WHERE id = ?4
+            "#,
         )
         .bind(active)
+        .bind(MIN_PLAYING_SECONDS)
+        .bind(now_rfc3339())
         .bind(&game_id)
         .execute(&self.pool)
         .await?;
-
-        // Derive `playing` from actually playing.
-        //
-        // `completion_state` was only ever written by the user through the
-        // GameDetails tabs, so the Dashboard's "Continue Playing" shelf — which
-        // filters on it — could never populate unless someone curated it by hand.
-        // Playing a game is the clearest possible signal that it is in progress.
-        //
-        // Deliberately narrow:
-        //   * only promotes from `unplayed`, so a user's own `completed`,
-        //     `abandoned` or `backlog` is never overwritten — manual progression
-        //     stays entirely under their control;
-        //   * requires a session long enough to be a real play rather than a
-        //     launch that was closed again, so an accidental start does not
-        //     reclassify the game.
-        if active >= MIN_PLAYING_SECONDS {
-            sqlx::query(
-                "UPDATE games SET completion_state = 'playing', updated_at = ?1 \
-                 WHERE id = ?2 AND completion_state = 'unplayed'",
-            )
-            .bind(now_rfc3339())
-            .bind(&game_id)
-            .execute(&self.pool)
-            .await?;
-        }
 
         Ok((game_id, active))
     }

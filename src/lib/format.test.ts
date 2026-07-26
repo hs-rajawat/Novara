@@ -8,6 +8,41 @@ import { formatBytes, formatPlaytime, formatRelative } from "./format";
 // behaviour the UI depends on, which is otherwise easy to change by accident.
 
 describe("formatPlaytime", () => {
+  // Sub-minute playtime used to round *up* to a minute, so 41 seconds of recorded
+  // play was displayed as "1m" — overstating it, and contradicting the game's own
+  // state, since 41 seconds is below the threshold at which NOVARA classifies a
+  // game as played. The library showed "1m" next to "Unplayed".
+  it("renders sub-minute durations in seconds rather than rounding up to a minute", () => {
+    expect(formatPlaytime(41)).toBe("41s");
+    expect(formatPlaytime(1)).toBe("1s");
+    expect(formatPlaytime(59)).toBe("59s");
+  });
+
+  it("switches to minutes exactly at the threshold NOVARA counts as played", () => {
+    expect(formatPlaytime(59)).toBe("59s");
+    expect(formatPlaytime(60)).toBe("1m");
+  });
+
+  it("never appears to shrink as playtime grows", () => {
+    // Monotonicity across both band boundaries: parsing back to seconds must be
+    // non-decreasing, or a longer session could display as less time.
+    const toSeconds = (s: string) =>
+      s.endsWith("s")
+        ? Number(s.slice(0, -1))
+        : s.endsWith("m")
+          ? Number(s.slice(0, -1)) * 60
+          : Number(s.slice(0, -1)) * 3600;
+
+    let previous = 0;
+    for (let seconds = 1; seconds <= 7200; seconds += 1) {
+      const shown = toSeconds(formatPlaytime(seconds));
+      expect(shown, `${seconds}s renders as ${formatPlaytime(seconds)}`).toBeGreaterThanOrEqual(
+        previous
+      );
+      previous = shown;
+    }
+  });
+
   it("renders sub-hour durations in minutes", () => {
     expect(formatPlaytime(90)).toBe("2m");
     expect(formatPlaytime(1800)).toBe("30m");

@@ -1,7 +1,18 @@
 import { format, formatDistanceToNowStrict, isToday, isYesterday, parseISO } from "date-fns";
 
+/**
+ * Human playtime.
+ *
+ * Sub-minute time is shown in seconds rather than rounded up to a minute. The
+ * rounding version reported "1m" for 41 seconds, which both overstated the number
+ * and contradicted the game's state: 41 seconds is below the threshold at which
+ * NOVARA considers a game played, so the library showed "1m" next to "Unplayed".
+ * Bands are monotonic — seconds below a minute, minutes below an hour, hours
+ * above — so a growing total never appears to shrink.
+ */
 export function formatPlaytime(seconds: number): string {
   if (!seconds || seconds <= 0) return "0h";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
   const hours = seconds / 3600;
   if (hours < 1) return `${Math.round(seconds / 60)}m`;
   if (hours < 10) return `${hours.toFixed(1)}h`;
