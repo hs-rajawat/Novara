@@ -687,6 +687,17 @@ a.list-row {
 
 .hero-banner {
   position: relative;
+  /* Keeps the ambient glow below. `.hero-ambient` sits at z-index: -1, which only
+     means "behind the banner's content" if the banner is a stacking context. It was
+     one *by accident*, and only briefly: `.fade-up` animates opacity and transform,
+     both of which establish one while the animation runs. The moment it finished,
+     the banner stopped being a stacking context, the ambient was promoted to the
+     root one, and z-index: -1 there put it behind `.main`'s opaque background — so
+     the glow visibly flattened about a second after the Dashboard opened. It was
+     never fading out; it was being painted over. `isolation: isolate` makes the
+     stacking context permanent and deliberate, so the first frame's appearance,
+     which is the intended one, is what stays. */
+  isolation: isolate;
   margin-bottom: 30px;
 }
 
