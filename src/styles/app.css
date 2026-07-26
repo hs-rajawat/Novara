@@ -945,12 +945,24 @@ a.list-row {
   background: linear-gradient(180deg, rgba(7, 10, 18, 0.1), rgba(7, 10, 18, 0.5));
   opacity: 0;
   transition: opacity var(--dur-med) var(--ease-out);
+  /* Never click-receiving, in any state.
+     ---------------------------------------------------------------
+     This container is a full-cover scrim, and the navigation anchor
+     (.game-card-link) is now a *sibling* rather than an ancestor — so a click
+     landing here has no bubbling path to the link and is simply consumed. When
+     this was gated on hover (`.game-card:hover .quick-actions { pointer-events:
+     auto }`) it swallowed every click over the cover art, which is most of the
+     card: clicking a card stopped opening its details page entirely.
+     Only the actual controls below opt back in. Do not re-add a hover rule
+     here; put `pointer-events: auto` on the interactive element instead. */
   pointer-events: none;
 }
 
+/* Reveal the controls on hover. `pointer-events` is deliberately NOT set here:
+   the scrim must stay transparent to clicks so the card-wide navigation link
+   underneath keeps working. See the note on .quick-actions. */
 .game-card:hover .quick-actions {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .qa-btn {
@@ -973,6 +985,29 @@ a.list-row {
 .game-card:hover .qa-btn {
   transform: translateY(0) scale(1);
   opacity: 1;
+}
+
+/* The only elements in the scrim that receive clicks.
+   ---------------------------------------------------------------
+   Scoped to `button` on purpose: the decorative chevron carries the .qa-btn
+   class for styling but is a <span> with no handler, so making it
+   click-receiving would swallow clicks meant for the card-wide link — the very
+   bug this rule set exists to prevent.
+
+   Gated on hover because the buttons are `opacity: 0` until then. An invisible
+   button with `pointer-events: auto` would silently intercept clicks aimed at
+   the cover art, which is worse than the original problem: the pointer would be
+   over an element the user cannot see. A mouse click always implies hover, so
+   the controls are live exactly when they are visible. */
+.game-card:hover .quick-actions button.qa-btn {
+  pointer-events: auto;
+}
+
+/* Decorative affordance for the card-wide link. Not interactive, not a tab stop
+   (it is a <span> marked aria-hidden), and explicitly not click-receiving so it
+   cannot shadow the link beneath it. */
+.qa-details {
+  pointer-events: none;
 }
 
 .qa-btn:hover {
