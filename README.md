@@ -107,16 +107,16 @@ npm run tauri dev
 
 ## 📍 Roadmap
 
-- [x] Steam support
-- [x] Epic Games support
-- [x] Playtime tracking
-- [x] Save management
-- [x] Installation verification
+- ✅ Steam support
+- ✅ Epic Games support
+- ✅ Playtime tracking
+- ✅ Save management
+- ✅ Installation verification
 - [ ] GOG support
 - [ ] Ubisoft Connect support
 - [ ] EA App support
 - [ ] Themes
-- [ ] Cloud sync (optional)
+- 🚧 Cloud sync (optional)
 
 ---
 
