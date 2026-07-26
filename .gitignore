@@ -32,3 +32,7 @@ src-tauri/Cargo.lock
 Thumbs.db
 *.swp
 *.log
+
+# Playwright end-to-end artefacts
+test-results/
+playwright-report/

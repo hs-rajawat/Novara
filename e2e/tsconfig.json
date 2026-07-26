@@ -1,0 +1,16 @@
+{
+  // The app's tsconfig includes only `src`, so without this the end-to-end
+  // sources would never be type-checked and a mistake in them would surface as a
+  // runtime failure during a test run instead of at compile time.
+  //
+  // Kept separate rather than widening the app's `include`, because this code runs
+  // in Node (it spawns processes) while the app code runs in a webview. They need
+  // different ambient types.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true
+  },
+  "include": [".", "../playwright.config.ts"]
+}
