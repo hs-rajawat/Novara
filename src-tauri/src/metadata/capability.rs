@@ -45,7 +45,18 @@
 /// something — a new identifier scheme, a new artwork kind, a title-search
 /// fallback. Leave it alone when adding or removing a provider, since the codes
 /// themselves already change the fingerprint.
-pub const CAPABILITY_EPOCH: u32 = 1;
+///
+/// # History
+///
+/// * **2** — title-based resolution. `steam_local` and `steam_cdn` can now answer
+///   for Epic and manually-imported games, because those games' identities carry a
+///   Steam app-id resolved from their title. The provider set is byte-for-byte
+///   identical from the outside, so nothing else would have noticed: every slot
+///   settled as `unsupported` under epoch 1 was settled on the strength of a
+///   capability that no longer describes reality. This is the case the epoch
+///   exists for, and it was anticipated in the note above.
+/// * **1** — initial.
+pub const CAPABILITY_EPOCH: u32 = 2;
 
 /// A stable identifier for a set of provider codes.
 ///
@@ -122,6 +133,27 @@ mod tests {
         assert!(
             current.starts_with(&format!("e{CAPABILITY_EPOCH}:")),
             "bumping the epoch must change the fingerprint: {current}"
+        );
+    }
+
+    /// The concrete case the epoch was bumped for: an existing library's Epic and
+    /// manual games were settled `unsupported` by exactly this provider set under
+    /// epoch 1, before title resolution existed. The set is unchanged, so only the
+    /// epoch can re-open them.
+    #[test]
+    fn slots_settled_before_title_resolution_are_reopened() {
+        let codes = ["epic_catalog", "steam_cdn", "steam_local"];
+        let settled_under_epoch_1 = "e1:epic_catalog,steam_cdn,steam_local";
+        let current = fingerprint(codes);
+
+        assert_ne!(
+            current, settled_under_epoch_1,
+            "the provider set is identical, so the epoch is the only difference"
+        );
+        assert!(
+            is_stale(Some(settled_under_epoch_1), &current),
+            "every artwork slot skipped as unsupported must be reconsidered now \
+             that a Steam app-id can be resolved from the title"
         );
     }
 }
