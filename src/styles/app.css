@@ -1560,18 +1560,17 @@ a.list-row {
   gap: 8px;
 }
 
+/* A display, not a control. The dashed border and accent-on-hover were
+   affordances for the per-slot picker buttons that used to sit beneath these
+   previews; with those gone, both would promise an interaction that no longer
+   exists. */
 .artwork-preview {
   background: var(--bg-2);
-  border: 1px dashed var(--border-strong);
+  border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
   overflow: hidden;
   display: grid;
   place-items: center;
-  transition: border-color var(--dur-fast);
-}
-
-.artwork-slot:hover .artwork-preview {
-  border-color: var(--accent);
 }
 
 .artwork-preview-cover {

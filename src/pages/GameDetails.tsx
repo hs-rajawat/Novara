@@ -29,10 +29,6 @@ const STATES: CompletionState[] = [
   "abandoned",
 ];
 
-const IMG_FILTERS = [
-  { name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp"] },
-];
-
 export function GameDetails() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
@@ -181,27 +177,6 @@ export function GameDetails() {
       setGame(await api.getGame(id));
     } catch (err) {
       reportError(err, "set the executable for this installation");
-    }
-  }
-
-  // One guarded picker for all artwork slots. The three previous copies
-  // differed only by which command they called and which field they wrote,
-  // and none of them reported a failure.
-  const ARTWORK_SLOTS = {
-    cover: { label: "cover art", call: api.setCoverPath, field: "cover_path" },
-    hero: { label: "hero image", call: api.setHeroPath, field: "hero_path" },
-    logo: { label: "logo", call: api.setLogoPath, field: "logo_path" },
-  } as const;
-
-  async function pickArtwork(slot: keyof typeof ARTWORK_SLOTS) {
-    const { label, call, field } = ARTWORK_SLOTS[slot];
-    try {
-      const picked = await open({ multiple: false, filters: IMG_FILTERS });
-      if (!picked || Array.isArray(picked)) return;
-      const stored = await call(id, picked as string);
-      setGame((prev) => (prev ? { ...prev, [field]: stored } : prev));
-    } catch (err) {
-      reportError(err, `set the ${label}`);
     }
   }
 
@@ -462,6 +437,12 @@ export function GameDetails() {
           Artwork
         </h2>
       </div>
+      {/* Previews only. The per-slot "change" pickers were removed as a UI
+          simplification; the capability behind them is untouched — the
+          set_cover_path/set_hero_path/set_logo_path commands are still
+          registered, their IPC wrappers still exist, and `user_locked` still
+          protects a user's own artwork from the auto-fetcher — so a dedicated
+          artwork customisation surface can be built without backend changes. */}
       <div className="artwork-row" style={{ marginBottom: 28 }}>
         <div className="artwork-slot">
           <div className="artwork-preview artwork-preview-cover">
@@ -473,10 +454,6 @@ export function GameDetails() {
               alt="Cover"
             />
           </div>
-          <button className="btn btn-sm" onClick={() => pickArtwork("cover")}>
-            <Icon name="image" size={13} />
-            {game.cover_path ? "Change cover" : "Set cover"}
-          </button>
         </div>
         <div className="artwork-slot">
           <div className="artwork-preview artwork-preview-hero">
@@ -488,10 +465,6 @@ export function GameDetails() {
               alt="Hero"
             />
           </div>
-          <button className="btn btn-sm" onClick={() => pickArtwork("hero")}>
-            <Icon name="image" size={13} />
-            {game.hero_path ? "Change hero" : "Set hero"}
-          </button>
         </div>
         <div className="artwork-slot">
           <div className="artwork-preview artwork-preview-logo">
@@ -503,10 +476,6 @@ export function GameDetails() {
               alt="Logo"
             />
           </div>
-          <button className="btn btn-sm" onClick={() => pickArtwork("logo")}>
-            <Icon name="image" size={13} />
-            {game.logo_path ? "Change logo" : "Set logo"}
-          </button>
         </div>
       </div>
 
