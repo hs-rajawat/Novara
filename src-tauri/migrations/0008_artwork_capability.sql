@@ -1,0 +1,29 @@
+-- Records *which provider set* concluded that an artwork slot cannot be filled.
+--
+-- Batch 5 gave the fill loop a terminal `skipped` state so a settled library
+-- stops calling providers. That fixed the never-terminating loop, but it
+-- conflated two architecturally different outcomes:
+--
+--   * `unsupported` — no registered provider is *capable* of resolving this
+--     game's identity at all. Epic and manually-imported games are in this
+--     position today: `steam_local` and `steam_cdn` require a Steam app-id, and
+--     `epic_catalog` is a deliberate stub, so every provider returns
+--     `Lookup::Unsupported`. Nothing was looked up; there is simply nobody to ask.
+--   * `not_found` — a provider that *could* answer did answer, definitively, that
+--     this artwork does not exist for this game.
+--
+-- Both are terminal for the current provider set, and neither should be retried
+-- on a timer: retrying an unsupported game every N hours would burn work to
+-- rediscover a fact that cannot change until the code changes.
+--
+-- What *can* change is the code. `settled_by` stores a fingerprint of the
+-- provider set that reached the conclusion, so eligibility becomes a comparison
+-- rather than a timer: a `skipped` slot is terminal only while the fingerprint
+-- still matches. Add a provider, remove one, or bump the capability epoch, and
+-- every slot settled under the old set becomes eligible again on the next sweep —
+-- automatically, exactly once, with no manual database repair and no retry loop.
+--
+-- NULL means "settled before this column existed", which is treated as stale for
+-- the same reason: those rows were settled by an unknown provider set. That is
+-- what re-opens the Epic games already marked `skipped` in existing databases.
+ALTER TABLE artwork_assets ADD COLUMN settled_by TEXT;

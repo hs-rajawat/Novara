@@ -53,6 +53,37 @@ pub fn primary_installation(installs: &[Installation]) -> Option<&Installation> 
         .min_by_key(|i| (status_rank(&i.status), if i.is_primary != 0 { 0 } else { 1 }))
 }
 
+/// Who chose an installation's executable, which decides whose value wins.
+///
+/// This is *caller intent*, deliberately separate from the persisted
+/// `game_installations.executable_override` flag that records "a user chose the
+/// current value". Conflating the two is what broke manual imports: the upsert's
+/// conflict clause kept the stored executable whenever `executable_override = 1`,
+/// so once a user had chosen an executable, **their own later choice was silently
+/// discarded too** — the guard could not tell a scanner overwriting a user's
+/// choice (must be blocked) from the user making a new one (must win). Passing
+/// `executable_override: true` only latched the flag; it granted no precedence.
+///
+/// Editing an installation directly (`set_installation_executable`) always
+/// worked, because it bypasses the upsert entirely — which is exactly why the
+/// import path looked inconsistent to the user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutableSource {
+    /// A scanner heuristic picked it. Never overwrites a user's choice, and never
+    /// sets the override flag.
+    Scanner,
+    /// The user picked it explicitly (Import Executable, or a manual import).
+    /// Authoritative: it overwrites whatever is stored, including a previous user
+    /// choice, and latches the override flag so later scans leave it alone.
+    User,
+}
+
+impl ExecutableSource {
+    fn is_user_choice(self) -> bool {
+        matches!(self, Self::User)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UpsertGame<'a> {
     pub title: &'a str,
@@ -61,9 +92,8 @@ pub struct UpsertGame<'a> {
     pub install_dir: &'a str,
     pub executable: Option<&'a str>,
     pub install_size_bytes: Option<i64>,
-    /// Pass `true` when the caller (not the scanner) chose this executable.
-    /// Prevents future rescans from overwriting the user's choice.
-    pub executable_override: bool,
+    /// Who chose this executable — see [`ExecutableSource`].
+    pub executable_source: ExecutableSource,
     /// Source-specific installed/not-installed evidence gathered during
     /// this scan (e.g. Steam's ACF `StateFlags`), if any — see
     /// `scanner::DetectedGame::install_state_hint`. `None` falls back to
@@ -305,17 +335,21 @@ impl Db {
         // `source_app_id`, size and status while leaving the row parented to
         // it. Doing nothing keeps both games' records truthful.
         //
-        // On conflict the executable is preserved when the user has manually
-        // overridden it (executable_override = 1); scanner-detected values
-        // are accepted only when the override flag is 0.
-        // The override flag itself is set to MAX(existing, incoming) so a
-        // manual import on an already-scanned game latches the flag to 1.
+        // Executable precedence is decided by *who is asking* (`?12`, from
+        // `UpsertGame::executable_source`), not by the stored flag alone:
+        //   * a user's explicit choice always wins, including over a previous
+        //     user choice — this is the manual-import fix;
+        //   * otherwise a stored user choice is preserved against scanners;
+        //   * otherwise the scanner's detection is accepted.
+        // The override flag is still MAX'd, so it latches once a user has
+        // chosen and a later scan cannot clear it.
         //
         // `status` only takes the freshly-resolved value when the existing
         // row is in an auto-managed state (installed/missing); a future
         // manual state (ignored, archived, ...) is left untouched by scans.
         if !destination_claimed_by_other {
             let install_id = Uuid::new_v4().to_string();
+            let user_choice = input.executable_source.is_user_choice();
             sqlx::query(
                 r#"
             INSERT INTO game_installations
@@ -324,9 +358,12 @@ impl Db {
                status, last_verified_at)
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10, ?11)
             ON CONFLICT(install_dir) DO UPDATE SET
-              executable = CASE WHEN game_installations.executable_override = 1
-                                THEN game_installations.executable
-                                ELSE excluded.executable END,
+              executable = CASE
+                             WHEN ?12 = 1 THEN excluded.executable
+                             WHEN game_installations.executable_override = 1
+                               THEN game_installations.executable
+                             ELSE excluded.executable
+                           END,
               executable_override = MAX(game_installations.executable_override,
                                         excluded.executable_override),
               source_app_id = excluded.source_app_id,
@@ -346,9 +383,10 @@ impl Db {
             .bind(input.source_app_id)
             .bind(input.install_size_bytes)
             .bind(&now)
-            .bind(input.executable_override as i64)
+            .bind(i64::from(user_choice))
             .bind(resolved.as_str())
             .bind(&now)
+            .bind(i64::from(user_choice))
             .execute(&mut *tx)
             .await?;
         }
@@ -371,6 +409,22 @@ impl Db {
             created,
             status_changed,
         })
+    }
+
+    /// The executable recorded for the installation at `install_dir`, if any.
+    ///
+    /// Used by `import_executable` to confirm the user's choice actually landed,
+    /// rather than trusting that the upsert applied it.
+    pub async fn installation_executable(
+        &self,
+        install_dir: &str,
+    ) -> AppResult<Option<Option<String>>> {
+        Ok(
+            sqlx::query_scalar("SELECT executable FROM game_installations WHERE install_dir = ?1")
+                .bind(install_dir)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
     }
 
     /// The size already recorded for an installation at `install_dir`, if any.

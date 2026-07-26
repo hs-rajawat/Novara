@@ -80,6 +80,11 @@ pub struct ArtworkAsset {
     /// Origin `Last-Modified`, sent back as `If-Modified-Since` on refresh.
     /// Kept alongside `etag` because not every origin honours both.
     pub last_modified: Option<String>,
+    /// Fingerprint of the provider set that settled this slot as `skipped`.
+    /// A slot stays terminal only while this matches the current provider set,
+    /// so a capability change re-opens it without manual repair. See
+    /// `metadata::capability`.
+    pub settled_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

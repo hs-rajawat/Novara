@@ -3,6 +3,14 @@ use crate::models::{now_rfc3339, PlaySession};
 
 use super::Db;
 
+/// Active seconds a session must credit before a game is considered "playing".
+///
+/// A launch that is closed again within a few seconds — a mistake, a wrong game,
+/// a launcher that failed — should not reclassify the title as in progress. A
+/// minute is comfortably past that and still well inside any real session, so the
+/// Dashboard populates on the first genuine play without the user managing state.
+const MIN_PLAYING_SECONDS: i64 = 60;
+
 impl Db {
     pub async fn start_session(&self, game_id: &str, process_name: Option<&str>) -> AppResult<i64> {
         let now = now_rfc3339();
@@ -63,6 +71,31 @@ impl Db {
         .bind(&game_id)
         .execute(&self.pool)
         .await?;
+
+        // Derive `playing` from actually playing.
+        //
+        // `completion_state` was only ever written by the user through the
+        // GameDetails tabs, so the Dashboard's "Continue Playing" shelf — which
+        // filters on it — could never populate unless someone curated it by hand.
+        // Playing a game is the clearest possible signal that it is in progress.
+        //
+        // Deliberately narrow:
+        //   * only promotes from `unplayed`, so a user's own `completed`,
+        //     `abandoned` or `backlog` is never overwritten — manual progression
+        //     stays entirely under their control;
+        //   * requires a session long enough to be a real play rather than a
+        //     launch that was closed again, so an accidental start does not
+        //     reclassify the game.
+        if active >= MIN_PLAYING_SECONDS {
+            sqlx::query(
+                "UPDATE games SET completion_state = 'playing', updated_at = ?1 \
+                 WHERE id = ?2 AND completion_state = 'unplayed'",
+            )
+            .bind(now_rfc3339())
+            .bind(&game_id)
+            .execute(&self.pool)
+            .await?;
+        }
 
         Ok((game_id, active))
     }

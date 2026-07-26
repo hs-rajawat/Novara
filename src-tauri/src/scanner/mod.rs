@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::db::{games::UpsertGame, Db};
+use crate::db::{games::ExecutableSource, games::UpsertGame, Db};
 use crate::error::AppResult;
 use crate::events::{AppEvent, EventBus};
 
@@ -183,7 +183,7 @@ impl ScannerOrchestrator {
                                 install_dir: install_dir.as_str(),
                                 executable: exe_str.as_deref(),
                                 install_size_bytes: size,
-                                executable_override: false,
+                                executable_source: ExecutableSource::Scanner,
                                 install_state_hint: g.install_state_hint,
                             })
                             .await

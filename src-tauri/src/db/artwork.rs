@@ -48,9 +48,20 @@ fn retry_at(attempts: i64) -> String {
 /// RFC3339 (`…T…+00:00`) while SQLite's date functions produce a space
 /// separator; comparing the two lexicographically is the latent format
 /// mismatch already tracked for the heatmap.
-pub fn is_retry_due(state: &str, next_retry_at: Option<&str>, now: chrono::DateTime<chrono::Utc>) -> bool {
+pub fn is_retry_due(
+    state: &str,
+    next_retry_at: Option<&str>,
+    settled_by: Option<&str>,
+    capability: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> bool {
     match state {
-        "ready" | "skipped" => false,
+        "ready" => false,
+        // Terminal only while the provider set that settled it is still the
+        // current one. A capability change re-opens the slot on the next sweep,
+        // which is how a future provider picks up games nothing could resolve
+        // before — no retry timer, no manual repair. See `metadata::capability`.
+        "skipped" => crate::metadata::capability::is_stale(settled_by, capability),
         "failed" => match next_retry_at {
             None => true,
             Some(ts) => match chrono::DateTime::parse_from_rfc3339(ts) {
@@ -223,35 +234,50 @@ impl Db {
         .unwrap_or((None, None)))
     }
 
-    /// Mark `(game_id, kind)` as terminally unavailable.
+    /// Mark `(game_id, kind)` as unfillable by the current provider set.
     ///
-    /// Written when a full pass over every eligible provider produced a
-    /// definitive answer and none of them could supply this kind — for
-    /// example `icon`, which no provider offers at all. `skipped` is terminal
-    /// for the fill loop in exactly the way `ready` is, and it is the reason a
-    /// settled library stops calling providers: previously `missing` was never
-    /// empty for such a kind, so the entire provider chain re-ran for every
-    /// game on every scan, forever.
+    /// `reason` records *why*, and is the architecturally important distinction:
+    /// `"unsupported"` means no provider was capable of resolving this game at
+    /// all (nothing was looked up), while `"not_found"` means a provider that
+    /// could answer did, definitively. It is stored in `source` because that
+    /// column is deliberately free-form provenance.
+    ///
+    /// `settled_by` is the fingerprint of the provider set that reached the
+    /// conclusion. That is what makes this terminal *without* being permanent:
+    /// eligibility is a comparison against the current fingerprint, so a
+    /// capability change re-opens the slot on the next sweep with no timer and no
+    /// manual repair. See `metadata::capability`.
     ///
     /// Guarded like the other writes so it can never displace a `ready` or
     /// `user_locked` asset. An explicit refresh clears it by writing `ready`.
-    pub async fn mark_artwork_skipped(&self, game_id: &str, kind: &str) -> AppResult<bool> {
+    pub async fn mark_artwork_skipped(
+        &self,
+        game_id: &str,
+        kind: &str,
+        reason: &str,
+        settled_by: &str,
+    ) -> AppResult<bool> {
         let now = now_rfc3339();
         let result = sqlx::query(
             r#"
-            INSERT INTO artwork_assets (game_id, kind, source, state, updated_at, next_retry_at)
-            VALUES (?1, ?2, 'none', 'skipped', ?3, NULL)
+            INSERT INTO artwork_assets
+              (game_id, kind, source, state, updated_at, next_retry_at, settled_by)
+            VALUES (?1, ?2, ?3, 'skipped', ?4, NULL, ?5)
             ON CONFLICT(game_id, kind) DO UPDATE SET
+              source = excluded.source,
               state = 'skipped',
               updated_at = excluded.updated_at,
-              next_retry_at = NULL
+              next_retry_at = NULL,
+              settled_by = excluded.settled_by
             WHERE artwork_assets.user_locked = 0
               AND artwork_assets.state != 'ready'
             "#,
         )
         .bind(game_id)
         .bind(kind)
+        .bind(reason)
         .bind(&now)
+        .bind(settled_by)
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() > 0)

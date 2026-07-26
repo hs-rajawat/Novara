@@ -5,6 +5,7 @@ import { GameArtwork } from "@/components/GameArtwork";
 import { PlatformBadge } from "@/components/PlatformBadge";
 import { Icon } from "@/components/Icon";
 import { api } from "@/lib/ipc";
+import { reportError } from "@/lib/toast";
 import { toImgSrc } from "@/lib/image";
 import { formatPlaytime, formatRelative } from "@/lib/format";
 
@@ -17,23 +18,44 @@ interface Featured {
   reason: string;
 }
 
-/** Priority: favorite you're mid-playthrough on → most recently played →
- * any favorite → most played → newest addition. Always resolves to
- * something as long as `games` is non-empty. */
-function pickFeatured(games: Game[]): Featured | null {
+/**
+ * Choose the featured game, and describe *why* it was chosen.
+ *
+ * Recency comes first. The previous order put "a favourite you have played"
+ * above "the game you played most recently", so marking one game as a favourite
+ * pinned it to the banner indefinitely — and it was labelled "Continue Playing"
+ * while the game you had actually just played was not shown at all.
+ *
+ * The "Continue Playing" label is now reserved for a game whose
+ * `completion_state` really is `playing` (which `stop_session` derives from a real
+ * play session). Anything else picked on recency says "Jump Back In", so the label
+ * always matches what the app knows. Favourites still break ties among equally
+ * recent candidates, and remain the fallback when nothing has been played.
+ *
+ * Always resolves to something as long as `games` is non-empty. Exported for
+ * testing: the selection rule is the part worth pinning, not the markup.
+ */
+export function pickFeatured(games: Game[]): Featured | null {
   if (games.length === 0) return null;
 
-  const byLastPlayed = (a: Game, b: Game) =>
-    (b.last_played_at ?? "").localeCompare(a.last_played_at ?? "");
+  // Most recent first; a favourite wins a tie between two equally recent games.
+  const byRecency = (a: Game, b: Game) => {
+    const byDate = (b.last_played_at ?? "").localeCompare(a.last_played_at ?? "");
+    if (byDate !== 0) return byDate;
+    return Number(b.is_favorite) - Number(a.is_favorite);
+  };
 
-  const favWithPlay = games
-    .filter((g) => g.is_favorite && g.last_played_at)
-    .sort(byLastPlayed)[0];
-  if (favWithPlay) return { game: favWithPlay, reason: "Continue Playing" };
+  const played = games.filter((g) => g.last_played_at).sort(byRecency);
+  const mostRecent = played[0];
+  if (mostRecent) {
+    return {
+      game: mostRecent,
+      reason:
+        mostRecent.completion_state === "playing" ? "Continue Playing" : "Jump Back In",
+    };
+  }
 
-  const mostRecent = games.filter((g) => g.last_played_at).sort(byLastPlayed)[0];
-  if (mostRecent) return { game: mostRecent, reason: "Jump Back In" };
-
+  // Nothing has been played yet: fall back to intent, then to what exists.
   const anyFavorite = games.find((g) => g.is_favorite);
   if (anyFavorite) return { game: anyFavorite, reason: "Favorite" };
 
@@ -61,6 +83,11 @@ export function HeroBanner({ games }: Props) {
     setLaunching(true);
     try {
       await api.launchGame(game.id);
+    } catch (err) {
+      // The third launch site. Batch 2 fixed GameCard and GameDetails but missed
+      // this one, so a failed launch from the hero banner still vanished — the
+      // button simply stopped spinning.
+      reportError(err, "launch this game");
     } finally {
       setLaunching(false);
     }

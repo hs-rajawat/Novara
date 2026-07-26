@@ -15,6 +15,11 @@ use crate::test_support::{seed_game, FakeArtworkProvider, test_db};
 
 const NOW: &str = "2026-07-25T12:00:00+00:00";
 
+/// The provider fingerprint these tests treat as "current". A `skipped` slot
+/// carrying this is terminal; one carrying anything else has been settled by a
+/// different provider set and must be reconsidered.
+const CAPABILITY: &str = "e1:fake";
+
 fn asset(kind: &str, state: &str, next_retry_at: Option<&str>, user_locked: i64) -> ArtworkAsset {
     ArtworkAsset {
         id: 1,
@@ -31,6 +36,8 @@ fn asset(kind: &str, state: &str, next_retry_at: Option<&str>, user_locked: i64)
         attempts: 0,
         next_retry_at: next_retry_at.map(str::to_string),
         last_modified: None,
+        // Settled by the current provider set unless a test says otherwise.
+        settled_by: Some(CAPABILITY.to_string()),
     }
 }
 
@@ -68,7 +75,7 @@ fn terminal_states_are_not_eligible() {
         asset("cover", "ready", None, 0),
         asset("hero", "skipped", None, 0),
     ];
-    let eligible = eligible_kinds(&existing, now);
+    let eligible = eligible_kinds(&existing, CAPABILITY, now);
     assert!(!eligible.contains(&ArtworkKind::Cover), "ready is terminal");
     assert!(!eligible.contains(&ArtworkKind::Hero), "skipped is terminal");
     assert!(eligible.contains(&ArtworkKind::Logo), "no row means eligible");
@@ -85,7 +92,7 @@ fn a_fully_settled_game_has_nothing_eligible() {
         asset("icon", "skipped", None, 0),
     ];
     assert!(
-        eligible_kinds(&existing, now).is_empty(),
+        eligible_kinds(&existing, CAPABILITY, now).is_empty(),
         "a settled library must not consult providers at all"
     );
 }
@@ -97,25 +104,25 @@ fn a_failed_slot_waits_for_its_backoff() {
     let past = (now - ChronoDuration::hours(1)).to_rfc3339();
 
     let waiting = vec![asset("cover", "failed", Some(&future), 0)];
-    assert!(!eligible_kinds(&waiting, now).contains(&ArtworkKind::Cover));
+    assert!(!eligible_kinds(&waiting, CAPABILITY, now).contains(&ArtworkKind::Cover));
 
     let due = vec![asset("cover", "failed", Some(&past), 0)];
-    assert!(eligible_kinds(&due, now).contains(&ArtworkKind::Cover));
+    assert!(eligible_kinds(&due, CAPABILITY, now).contains(&ArtworkKind::Cover));
 }
 
 #[test]
 fn a_user_locked_slot_is_never_contested() {
     let now = Utc::now();
     let existing = vec![asset("cover", "pending", None, 1)];
-    assert!(!eligible_kinds(&existing, now).contains(&ArtworkKind::Cover));
+    assert!(!eligible_kinds(&existing, CAPABILITY, now).contains(&ArtworkKind::Cover));
 }
 
 #[test]
 fn pending_and_missing_rows_are_eligible() {
     let now = Utc::now();
-    assert!(eligible_kinds(&[asset("cover", "pending", None, 0)], now)
+    assert!(eligible_kinds(&[asset("cover", "pending", None, 0)], CAPABILITY, now)
         .contains(&ArtworkKind::Cover));
-    assert!(eligible_kinds(&[], now).len() == ArtworkKind::ALL.len());
+    assert!(eligible_kinds(&[], CAPABILITY, now).len() == ArtworkKind::ALL.len());
 }
 
 #[test]
@@ -132,8 +139,8 @@ fn backoff_grows_then_holds() {
 /// A corrupt timestamp must not strand a slot permanently.
 #[test]
 fn an_unparseable_retry_stamp_is_treated_as_due() {
-    assert!(is_retry_due("failed", Some("not a timestamp"), Utc::now()));
-    assert!(is_retry_due("failed", None, Utc::now()));
+    assert!(is_retry_due("failed", Some("not a timestamp"), None, CAPABILITY, Utc::now()));
+    assert!(is_retry_due("failed", None, None, CAPABILITY, Utc::now()));
 }
 
 // ── ledger behaviour ────────────────────────────────────────────────────
@@ -196,7 +203,7 @@ async fn skipped_is_written_but_never_displaces_ready_or_locked_artwork() {
     let game = seed_game(&db, "Mixed").await;
 
     // A kind nothing supplies.
-    assert!(db.mark_artwork_skipped(&game, "icon").await.unwrap());
+    assert!(db.mark_artwork_skipped(&game, "icon", "unsupported", CAPABILITY).await.unwrap());
     let state: String = sqlx::query_scalar(
         "SELECT state FROM artwork_assets WHERE game_id = ?1 AND kind = 'icon'",
     )
@@ -210,7 +217,7 @@ async fn skipped_is_written_but_never_displaces_ready_or_locked_artwork() {
     db.upsert_artwork_ready(&game, "cover", "steam_local", None, "C:/c.jpg", Validators::default())
         .await
         .unwrap();
-    assert!(!db.mark_artwork_skipped(&game, "cover").await.unwrap());
+    assert!(!db.mark_artwork_skipped(&game, "cover", "not_found", CAPABILITY).await.unwrap());
     let state: String = sqlx::query_scalar(
         "SELECT state FROM artwork_assets WHERE game_id = ?1 AND kind = 'cover'",
     )
@@ -222,7 +229,7 @@ async fn skipped_is_written_but_never_displaces_ready_or_locked_artwork() {
 
     // Nor may it touch a user's choice.
     db.lock_artwork_asset(&game, "hero", "C:/user.jpg").await.unwrap();
-    assert!(!db.mark_artwork_skipped(&game, "hero").await.unwrap());
+    assert!(!db.mark_artwork_skipped(&game, "hero", "not_found", CAPABILITY).await.unwrap());
 }
 
 /// A user setting artwork must clear a terminal `skipped`, so the slot is not
@@ -231,7 +238,7 @@ async fn skipped_is_written_but_never_displaces_ready_or_locked_artwork() {
 async fn a_user_choice_overrides_a_skipped_slot() {
     let db = test_db().await;
     let game = seed_game(&db, "Manual Icon").await;
-    db.mark_artwork_skipped(&game, "icon").await.unwrap();
+    db.mark_artwork_skipped(&game, "icon", "unsupported", CAPABILITY).await.unwrap();
     db.lock_artwork_asset(&game, "icon", "C:/user-icon.png").await.unwrap();
 
     let (state, locked): (String, i64) = sqlx::query_as(
@@ -581,8 +588,153 @@ async fn a_permanent_miss_settles_slots_without_recording_false_failures() {
     assert_eq!(rows.len(), 4, "every kind settles");
     for (kind, state, source) in rows {
         assert_eq!(state, "skipped", "{kind} should be skipped, not failed");
-        assert_eq!(source, "none", "{kind} must not claim a provider tried it");
+        assert_eq!(
+            source, "not_found",
+            "{kind} records that a provider looked and did not find it, rather than \
+             naming a provider that supposedly tried each kind"
+        );
     }
+}
+
+/// A game no provider is *capable* of resolving settles as `unsupported`, not
+/// `not_found`. The distinction is the whole point: one is a statement about the
+/// game, the other about NOVARA's current providers.
+#[tokio::test]
+async fn a_game_no_provider_can_resolve_settles_as_unsupported() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Epic Only").await;
+
+    // Every provider declines to handle this identity at all.
+    let provider = Arc::new(FakeArtworkProvider::new("fake", 0, Lookup::Unsupported));
+    let (svc, _app_data) = service(&db, vec![provider]);
+    svc.fill_missing(true).await.unwrap();
+
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT state, source FROM artwork_assets WHERE game_id = ?1",
+    )
+    .bind(&game)
+    .fetch_all(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 4);
+    for (state, source) in rows {
+        assert_eq!(state, "skipped");
+        assert_eq!(source, "unsupported");
+    }
+}
+
+/// The extensibility guarantee: a slot settled by one provider set becomes
+/// eligible again once the provider set changes — automatically, with no retry
+/// timer and no manual database repair.
+#[tokio::test]
+async fn changing_the_provider_set_reopens_settled_slots() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Waiting For A Provider").await;
+
+    // Pass one: nothing can resolve it, so every slot settles.
+    let (svc, _app_data) = service(
+        &db,
+        vec![Arc::new(FakeArtworkProvider::new("only", 0, Lookup::Unsupported))],
+    );
+    svc.fill_missing(true).await.unwrap();
+    let settled: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM artwork_assets WHERE game_id = ?1 AND state = 'skipped'",
+    )
+    .bind(&game)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(settled, 4);
+
+    // The same provider set must not reconsider them.
+    let (again, _d) = service(
+        &db,
+        vec![Arc::new(FakeArtworkProvider::new("only", 0, Lookup::Unsupported))],
+    );
+    assert_eq!(
+        again.fill_missing(true).await.unwrap().checked,
+        0,
+        "an unchanged provider set must leave settled slots alone"
+    );
+
+    // Now a capability arrives. Registering it is the only action required.
+    let (_fixture, descriptors) = temp_assets(&[ArtworkKind::Cover]);
+    let newcomer = Arc::new(FakeArtworkProvider::new(
+        "newcomer",
+        0,
+        Lookup::Found(descriptors),
+    ));
+    let calls = newcomer.calls.clone();
+    let (extended, _d2) = service(
+        &db,
+        vec![
+            Arc::new(FakeArtworkProvider::new("only", 1, Lookup::Unsupported)),
+            newcomer,
+        ],
+    );
+    let report = extended.fill_missing(true).await.unwrap();
+
+    assert_eq!(report.checked, 1, "the game must become eligible again");
+    assert!(calls.count() >= 1, "the new provider must actually be consulted");
+    let cover: (String, String) = sqlx::query_as(
+        "SELECT state, source FROM artwork_assets WHERE game_id = ?1 AND kind = 'cover'",
+    )
+    .bind(&game)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        cover,
+        ("ready".to_string(), "newcomer".to_string()),
+        "the previously unsupported slot is now filled"
+    );
+}
+
+/// A real artwork asset must never be re-opened by a capability change — only
+/// slots that were settled as unfillable.
+#[tokio::test]
+async fn a_capability_change_does_not_disturb_existing_artwork() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Already Has Art").await;
+    let (_fixture, descriptors) = temp_assets(&[ArtworkKind::Cover]);
+    let (svc, _app_data) = service(
+        &db,
+        vec![Arc::new(FakeArtworkProvider::new(
+            "first",
+            0,
+            Lookup::Found(descriptors),
+        ))],
+    );
+    svc.fill_missing(true).await.unwrap();
+    let before: (String, String) = sqlx::query_as(
+        "SELECT state, source FROM artwork_assets WHERE game_id = ?1 AND kind = 'cover'",
+    )
+    .bind(&game)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(before.0, "ready");
+
+    // A different provider set arrives; the ready asset must be untouched.
+    let (_f2, other) = temp_assets(&[ArtworkKind::Cover]);
+    let (extended, _d) = service(
+        &db,
+        vec![Arc::new(FakeArtworkProvider::new(
+            "second",
+            0,
+            Lookup::Found(other),
+        ))],
+    );
+    extended.fill_missing(true).await.unwrap();
+
+    let after: (String, String) = sqlx::query_as(
+        "SELECT state, source FROM artwork_assets WHERE game_id = ?1 AND kind = 'cover'",
+    )
+    .bind(&game)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(after, before, "a ready asset is owned by whoever supplied it");
 }
 
 /// Hidden games were still being fetched for, despite the user having removed

@@ -272,6 +272,118 @@ async fn the_watcher_opens_a_session_for_an_externally_started_game() {
     assert_eq!(name.as_deref(), Some("g.exe"));
 }
 
+// ── deriving `playing` from a real session ──────────────────────────────
+
+async fn completion_state(db: &crate::db::Db, game_id: &str) -> String {
+    sqlx::query_scalar("SELECT completion_state FROM games WHERE id = ?1")
+        .bind(game_id)
+        .fetch_one(&db.pool)
+        .await
+        .unwrap()
+}
+
+/// The Dashboard's "Continue Playing" shelf filters on `completion_state`, but
+/// the only writer was the user's own GameDetails tabs — so the shelf could never
+/// populate unless someone curated it by hand. Playing a game is the clearest
+/// possible signal that it is in progress.
+#[tokio::test]
+async fn a_real_session_marks_a_game_as_playing() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Red Dead Redemption 2").await;
+    let pt = tracker(&db).await;
+
+    let session = pt.start(&game, Some("rdr2.exe")).await.unwrap();
+    db.stop_session(session, 600, 0).await.unwrap();
+
+    assert_eq!(completion_state(&db, &game).await, "playing");
+}
+
+/// A launch that was closed again is not a play session.
+#[tokio::test]
+async fn a_momentary_launch_does_not_mark_a_game_as_playing() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Mis-click").await;
+    let pt = tracker(&db).await;
+
+    let session = pt.start(&game, Some("g.exe")).await.unwrap();
+    db.stop_session(session, 5, 0).await.unwrap();
+
+    assert_eq!(
+        completion_state(&db, &game).await,
+        "unplayed",
+        "a five-second launch must not reclassify the game"
+    );
+}
+
+/// Idle time is excluded, so a session that was mostly idle is judged on the
+/// active portion.
+#[tokio::test]
+async fn only_active_time_counts_towards_being_playing() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Mostly Idle").await;
+    let pt = tracker(&db).await;
+
+    let session = pt.start(&game, Some("g.exe")).await.unwrap();
+    // Ten minutes wall clock, almost all idle: 30 active seconds.
+    db.stop_session(session, 600, 570).await.unwrap();
+
+    assert_eq!(completion_state(&db, &game).await, "unplayed");
+}
+
+/// Manual progression stays under the user's control. These states are their
+/// judgement about the game and must never be overwritten by simply launching it.
+#[tokio::test]
+async fn a_users_own_completion_state_is_never_overwritten() {
+    for state in ["completed", "abandoned", "backlog", "playing"] {
+        let db = test_db().await;
+        let game = seed_game(&db, "Curated").await;
+        sqlx::query("UPDATE games SET completion_state = ?1 WHERE id = ?2")
+            .bind(state)
+            .bind(&game)
+            .execute(&db.pool)
+            .await
+            .unwrap();
+
+        let pt = tracker(&db).await;
+        let session = pt.start(&game, Some("g.exe")).await.unwrap();
+        db.stop_session(session, 3600, 0).await.unwrap();
+
+        assert_eq!(
+            completion_state(&db, &game).await,
+            state,
+            "{state} is the user's own classification and must survive a session"
+        );
+    }
+}
+
+/// Promotion happens once; later sessions do not keep rewriting the row.
+#[tokio::test]
+async fn promotion_to_playing_is_idempotent() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Repeat Player").await;
+    let pt = tracker(&db).await;
+
+    for _ in 0..3 {
+        let session = pt.start(&game, Some("g.exe")).await.unwrap();
+        db.stop_session(session, 600, 0).await.unwrap();
+    }
+    assert_eq!(completion_state(&db, &game).await, "playing");
+}
+
+/// A discarded session (a launch whose process never appeared) credits nothing,
+/// so it must not promote the game either.
+#[tokio::test]
+async fn a_discarded_launch_does_not_mark_a_game_as_playing() {
+    let db = test_db().await;
+    let game = seed_game(&db, "Never Started").await;
+    let pt = tracker(&db).await;
+
+    pt.start(&game, None).await.unwrap();
+    pt.reconcile(HashMap::new(), Duration::ZERO).await.unwrap();
+
+    assert_eq!(completion_state(&db, &game).await, "unplayed");
+}
+
 // ── 4.2 graceful shutdown ───────────────────────────────────────────────
 
 #[tokio::test]

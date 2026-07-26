@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::db::games::UpsertGame;
+use crate::db::games::{ExecutableSource, UpsertGame};
 use crate::error::{AppError, AppResult};
 use crate::events::{AppEvent, NoticeLevel};
 use crate::integrity::{resolve_installation_status, InstallStatus};
@@ -395,7 +395,7 @@ pub async fn import_executable(
             install_dir: &install_dir_str,
             executable: Some(executable),
             install_size_bytes: None,
-            executable_override: true,
+            executable_source: ExecutableSource::User,
             install_state_hint: None,
         })
         .await?;
@@ -405,6 +405,29 @@ pub async fn import_executable(
             game_id: result.game_id_owned.to_string(),
             title: title.to_string(),
         });
+    } else {
+        // An existing installation was updated in place, so anything showing it
+        // needs to re-read.
+        state.bus.emit(AppEvent::GameUpdated {
+            game_id: result.game_id_owned.to_string(),
+        });
+    }
+
+    // Read back what was actually stored and confirm it is what the user picked.
+    // The previous failure mode was silent: the upsert kept a different
+    // executable and the import reported success anyway, so the user had no way
+    // to tell their choice had been discarded. This turns that class of bug into
+    // an error instead of a mystery.
+    let stored = state
+        .db
+        .installation_executable(&install_dir_str)
+        .await?
+        .flatten();
+    if stored.as_deref() != Some(executable) {
+        return Err(AppError::Other(format!(
+            "imported {} but the stored executable is {:?}; the import did not take effect",
+            executable, stored
+        )));
     }
 
     Ok(result.game_id_owned.to_string())

@@ -109,6 +109,10 @@ impl ArtworkService {
     /// per Steam game, indefinitely.
     pub async fn fill_missing(&self, allow_network: bool) -> AppResult<FillReport> {
         let providers = self.build_providers().await;
+        // Identifies the provider set reaching today's conclusions. Slots settled
+        // under a different set are reconsidered automatically — see
+        // `metadata::capability`.
+        let capability = super::capability::fingerprint(providers.iter().map(|p| p.code()));
 
         // Hidden games are excluded: the user removed them from the library, so
         // fetching artwork for them is work nobody asked for.
@@ -121,7 +125,7 @@ impl ArtworkService {
 
         for game in &games {
             let existing = self.db.list_artwork_assets(&game.id).await?;
-            let eligible = eligible_kinds(&existing, chrono::Utc::now());
+            let eligible = eligible_kinds(&existing, &capability, chrono::Utc::now());
             if eligible.is_empty() {
                 continue;
             }
@@ -140,15 +144,26 @@ impl ArtworkService {
             updated += outcome.filled;
             self.announce(&game.id, outcome.filled);
 
-            // Only settle a slot as terminally unavailable when this pass
-            // actually got a definitive answer from every provider. If any
-            // provider was skipped (network disabled) or circuit-broken, or
-            // reported a transient failure, the absence of artwork says nothing
-            // about whether it exists — marking `skipped` there would strand
-            // the slot until an explicit refresh.
+            // Only settle a slot as unfillable when this pass actually got a
+            // definitive answer from every provider. If any provider was skipped
+            // (network disabled) or circuit-broken, or reported a transient
+            // failure, the absence of artwork says nothing about whether it
+            // exists — marking `skipped` there would strand the slot.
             if outcome.conclusive {
+                // Why it could not be filled, which is the distinction the
+                // capability fingerprint exists to make useful later: nobody was
+                // able to look, versus somebody looked and it is not there.
+                let reason = if outcome.attempted {
+                    "not_found"
+                } else {
+                    "unsupported"
+                };
                 for kind in outcome.unresolved {
-                    if self.db.mark_artwork_skipped(&game.id, kind.as_str()).await? {
+                    if self
+                        .db
+                        .mark_artwork_skipped(&game.id, kind.as_str(), reason, &capability)
+                        .await?
+                    {
                         settled += 1;
                     }
                 }
@@ -157,7 +172,7 @@ impl ArtworkService {
 
         info!(
             checked,
-            updated, settled, "artwork fill complete"
+            updated, settled, capability = %capability, "artwork fill complete"
         );
         Ok(FillReport { checked, updated })
     }
@@ -243,6 +258,8 @@ impl ArtworkService {
         // to be settled as unavailable. Set false by anything that means "we
         // did not really ask".
         let mut conclusive = true;
+        // Set as soon as any provider is capable of answering for this game.
+        let mut attempted = false;
         let identity = identity_for(&self.db, game).await?;
         let ctx = LookupContext {
             identity: &identity,
@@ -267,6 +284,8 @@ impl ArtworkService {
 
             match provider.resolve_artwork(&ctx).await {
                 Lookup::Found(descriptors) => {
+                    // This provider could resolve the game's identity.
+                    attempted = true;
                     for descriptor in descriptors {
                         if !missing.contains(&descriptor.kind) {
                             // A higher-priority provider (earlier in
@@ -374,6 +393,10 @@ impl ArtworkService {
                 }
                 Lookup::Unsupported => continue,
                 Lookup::Permanent(_) => {
+                    // A provider that *could* answer answered definitively. That
+                    // is a statement about the game, unlike `Unsupported`, which
+                    // is a statement about our capabilities.
+                    attempted = true;
                     // A provider-level "not here" — definitive, and it says
                     // nothing per kind. It is deliberately *not* recorded as a
                     // per-kind failure: this previously looped every remaining
@@ -401,6 +424,7 @@ impl ArtworkService {
         Ok(ResolveOutcome {
             filled: updated,
             conclusive,
+            attempted,
             unresolved: missing,
         })
     }
@@ -440,6 +464,7 @@ fn kind_from_str(s: &str) -> Option<ArtworkKind> {
 /// hidden games.
 pub(crate) fn eligible_kinds(
     existing: &[crate::models::ArtworkAsset],
+    capability: &str,
     now: chrono::DateTime<chrono::Utc>,
 ) -> HashSet<ArtworkKind> {
     let mut out: HashSet<ArtworkKind> = ArtworkKind::ALL.into_iter().collect();
@@ -452,6 +477,8 @@ pub(crate) fn eligible_kinds(
             || !crate::db::artwork::is_retry_due(
                 &asset.state,
                 asset.next_retry_at.as_deref(),
+                asset.settled_by.as_deref(),
+                capability,
                 now,
             )
         {
@@ -468,6 +495,14 @@ struct ResolveOutcome {
     /// Whether every provider gave a definitive answer, so remaining kinds can
     /// be settled as unavailable.
     conclusive: bool,
+    /// Whether any provider was actually *able* to look this game up.
+    ///
+    /// False means every provider returned `Unsupported` — nobody could resolve
+    /// the identity, so the absence of artwork is a statement about NOVARA's
+    /// current capabilities rather than about the game. That is what separates
+    /// `"unsupported"` from `"not_found"` when settling, and what makes a future
+    /// provider's arrival meaningful.
+    attempted: bool,
     /// Kinds still without artwork after the pass.
     unresolved: HashSet<ArtworkKind>,
 }

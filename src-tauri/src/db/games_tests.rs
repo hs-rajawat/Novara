@@ -3,7 +3,7 @@
 //! Every test here corresponds to a defect that existed in shipped code and
 //! that nothing caught, because `db/*` had no tests at all.
 
-use crate::db::games::{normalize_sort_title, primary_installation};
+use crate::db::games::{normalize_sort_title, primary_installation, ExecutableSource};
 use crate::error::AppError;
 use crate::models::now_rfc3339;
 use crate::test_support::{seed_game, seed_genre, seed_installation, test_db};
@@ -521,7 +521,7 @@ async fn upsert_move_detection_leaves_another_games_row_intact() {
             install_dir: "D:/old",
             executable: Some("D:/old/g.exe"),
             install_size_bytes: None,
-            executable_override: false,
+            executable_source: ExecutableSource::Scanner,
             install_state_hint: Some(true),
         })
         .await
@@ -548,7 +548,7 @@ async fn upsert_move_detection_leaves_another_games_row_intact() {
         install_dir: "D:/new",
         executable: Some("D:/new/g.exe"),
         install_size_bytes: None,
-        executable_override: false,
+        executable_source: ExecutableSource::Scanner,
         install_state_hint: Some(true),
     })
     .await
@@ -608,7 +608,7 @@ async fn duplicate_detection_prefers_launcher_identity_over_install_dir() {
             install_dir: "D:/a",
             executable: Some("D:/a/g.exe"),
             install_size_bytes: None,
-            executable_override: false,
+            executable_source: ExecutableSource::Scanner,
             install_state_hint: Some(true),
         })
         .await
@@ -630,7 +630,7 @@ async fn duplicate_detection_prefers_launcher_identity_over_install_dir() {
             install_dir: "D:/b",
             executable: Some("D:/b/g.exe"),
             install_size_bytes: None,
-            executable_override: false,
+            executable_source: ExecutableSource::Scanner,
             install_state_hint: Some(true),
         })
         .await
@@ -665,7 +665,7 @@ async fn move_detection_is_null_safe_against_manual_occupants() {
             install_dir: "D:/from",
             executable: Some("D:/from/g.exe"),
             install_size_bytes: None,
-            executable_override: false,
+            executable_source: ExecutableSource::Scanner,
             install_state_hint: Some(true),
         })
         .await
@@ -684,7 +684,7 @@ async fn move_detection_is_null_safe_against_manual_occupants() {
         install_dir: "D:/to",
         executable: Some("D:/to/g.exe"),
         install_size_bytes: None,
-        executable_override: false,
+        executable_source: ExecutableSource::Scanner,
         install_state_hint: Some(true),
     })
     .await
@@ -716,7 +716,7 @@ async fn move_detection_clears_its_own_ghost_and_relinks() {
             install_dir: "D:/old",
             executable: Some("D:/old/g.exe"),
             install_size_bytes: None,
-            executable_override: false,
+            executable_source: ExecutableSource::Scanner,
             install_state_hint: Some(true),
         })
         .await
@@ -734,7 +734,7 @@ async fn move_detection_clears_its_own_ghost_and_relinks() {
         install_dir: "D:/new",
         executable: Some("D:/new/g.exe"),
         install_size_bytes: None,
-        executable_override: false,
+        executable_source: ExecutableSource::Scanner,
         install_state_hint: Some(true),
     })
     .await
@@ -765,7 +765,7 @@ async fn move_detection_preserves_a_manual_executable_override() {
         install_dir: "D:/old",
         executable: Some("D:/old/user-chosen.exe"),
         install_size_bytes: None,
-        executable_override: true,
+        executable_source: ExecutableSource::User,
         install_state_hint: Some(true),
     })
     .await
@@ -778,7 +778,7 @@ async fn move_detection_preserves_a_manual_executable_override() {
         install_dir: "D:/new",
         executable: Some("D:/new/scanner-guess.exe"),
         install_size_bytes: None,
-        executable_override: false,
+        executable_source: ExecutableSource::Scanner,
         install_state_hint: Some(true),
     })
     .await
@@ -954,6 +954,107 @@ async fn heatmap_is_empty_for_a_library_with_no_sessions() {
         .await
         .unwrap();
     assert!(rows.is_empty());
+}
+
+// ── executable precedence by caller intent ──────────────────────────────
+
+async fn upsert_exe(
+    db: &crate::db::Db,
+    dir: &str,
+    exe: &str,
+    source: ExecutableSource,
+) -> crate::db::games::UpsertResult {
+    db.upsert_game(crate::db::games::UpsertGame {
+        title: "Red Dead Redemption 2",
+        source_code: "manual",
+        source_app_id: None,
+        install_dir: dir,
+        executable: Some(exe),
+        install_size_bytes: None,
+        executable_source: source,
+        install_state_hint: Some(true),
+    })
+    .await
+    .expect("upsert")
+}
+
+async fn stored_exe(db: &crate::db::Db, dir: &str) -> (Option<String>, i64) {
+    sqlx::query_as(
+        "SELECT executable, executable_override FROM game_installations WHERE install_dir = ?1",
+    )
+    .bind(dir)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap()
+}
+
+/// The manual-import bug. The conflict clause kept the stored executable whenever
+/// `executable_override = 1`, so once a user had chosen one, their *own* later
+/// choice was discarded too — the guard could not tell a scanner overwriting a
+/// user's choice from the user making a new one.
+#[tokio::test]
+async fn a_user_choice_overrides_an_earlier_user_choice() {
+    let db = test_db().await;
+    let dir = "D:/Games/Red Dead Redemption 2";
+
+    upsert_exe(&db, dir, "RDR2.exe", ExecutableSource::User).await;
+    assert_eq!(stored_exe(&db, dir).await, (Some("RDR2.exe".into()), 1));
+
+    // The user changes their mind — this must win.
+    upsert_exe(&db, dir, "Launcher.exe", ExecutableSource::User).await;
+    assert_eq!(
+        stored_exe(&db, dir).await,
+        (Some("Launcher.exe".into()), 1),
+        "an explicit user import must replace an earlier user choice"
+    );
+}
+
+/// The protection that must survive: scanners still cannot overwrite a choice.
+#[tokio::test]
+async fn a_scanner_cannot_overwrite_a_user_choice() {
+    let db = test_db().await;
+    let dir = "D:/Games/Red Dead Redemption 2";
+
+    upsert_exe(&db, dir, "Launcher.exe", ExecutableSource::User).await;
+    upsert_exe(&db, dir, "RDR2.exe", ExecutableSource::Scanner).await;
+
+    assert_eq!(
+        stored_exe(&db, dir).await,
+        (Some("Launcher.exe".into()), 1),
+        "a rescan must leave the user's executable alone"
+    );
+}
+
+#[tokio::test]
+async fn a_scanner_may_update_its_own_earlier_detection() {
+    let db = test_db().await;
+    let dir = "D:/Games/Some Game";
+
+    upsert_exe(&db, dir, "old.exe", ExecutableSource::Scanner).await;
+    upsert_exe(&db, dir, "new.exe", ExecutableSource::Scanner).await;
+
+    assert_eq!(
+        stored_exe(&db, dir).await,
+        (Some("new.exe".into()), 0),
+        "scanner detections are not user choices and may be refined"
+    );
+}
+
+/// The override flag latches: a user choice followed by scans keeps the flag set.
+#[tokio::test]
+async fn the_override_flag_latches_once_a_user_has_chosen() {
+    let db = test_db().await;
+    let dir = "D:/Games/Latched";
+
+    upsert_exe(&db, dir, "detected.exe", ExecutableSource::Scanner).await;
+    assert_eq!(stored_exe(&db, dir).await.1, 0);
+
+    upsert_exe(&db, dir, "chosen.exe", ExecutableSource::User).await;
+    upsert_exe(&db, dir, "detected-again.exe", ExecutableSource::Scanner).await;
+
+    let (exe, flag) = stored_exe(&db, dir).await;
+    assert_eq!(exe.as_deref(), Some("chosen.exe"));
+    assert_eq!(flag, 1, "a later scan must not clear the override");
 }
 
 // ── unrelated pure helper, cheap to pin ─────────────────────────────────
