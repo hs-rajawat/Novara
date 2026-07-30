@@ -4,7 +4,7 @@ use tauri::State;
 
 use crate::error::{AppError, AppResult};
 use crate::models::{SaveBackup, SaveProfile};
-use crate::save_detect::DetectedPath;
+use crate::saves::locator::DetectedPath;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -113,7 +113,7 @@ pub async fn detect_save_paths(
         .map(|p| p.source_dir)
         .collect();
 
-    let found = crate::save_detect::detect(&game.title);
+    let found = crate::saves::locator::detect(&crate::saves::fs::RealFs, &game.title);
 
     Ok(found
         .into_iter()

@@ -5,6 +5,7 @@ import App from "./App";
 
 import "./styles/theme.css";
 import "./styles/app.css";
+import "./styles/game-details.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -48,13 +48,50 @@
   /* ── layout ────────────────────────────────────────────────── */
   --sidebar-w: 216px;
   --topbar-h: 58px;
-  /* How far the Game Details cover poster is pulled up over the hero banner.
-     Read by both the poster's negative margin and the hero logo's offset, which
-     must clear it — see `.details-hero-logo`. */
-  --details-overlap: 112px;
+  /* Read by `.content` and by anything that needs to cancel its gutter to go
+     full-bleed — the Game Details hero does exactly that. */
+  --content-pad-x: 32px;
+  --content-pad-y: 28px;
+
+  /* ── 8px spacing scale ────────────────────────────────────────
+     One ladder for every gap, pad and margin. Anything that needs a
+     value not on it is a design decision, not a nudge. */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+  --space-6: 48px;
+  --space-8: 64px;
+
+  /* ── Game Details hero ────────────────────────────────────────
+     The hero *is* the first viewport: cover, logo, badges, description,
+     metadata and actions all compose inside it, and it fades into --bg-0
+     rather than ending on an edge. Nothing overlaps its boundary, so there
+     is no overlap token any more — the cover lives inside the artwork.
+
+     Height is free of the artwork now: hero art fits the hero's *width*
+     (see `.gd-hero-art`), so a taller hero no longer crops the key art —
+     it only changes how much of the composition sits on artwork versus on
+     the fade below it. This is set cinematic but not maximal, so the tab
+     strip still lands inside the fold. */
+  --gd-hero-h: 76vh;
+  --gd-hero-min: 560px;
+  /* Asymmetric on purpose: a tight left gutter weights the composition to the
+     left edge, while the bottom inset lifts it off the fade. */
+  --gd-hero-pad-x: clamp(20px, 2.6vw, 44px);
+  --gd-hero-pad-b: clamp(40px, 5vh, 60px);
+  --gd-cover-w: clamp(176px, 15vw, 264px);
+  --gd-control-h: 44px;
+  /* Horizontal padding on hero actions. Tightens before the row is allowed to
+     wrap — a broken action row costs more than a few pixels of padding. */
+  --gd-btn-pad: 18px;
+
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  /* Premium card radius, used by the Game Details panels. */
+  --radius-2xl: 20px;
   --radius-xl: 22px;
   --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.03) inset,
               0 8px 24px rgba(0, 0, 0, 0.35);
@@ -71,6 +108,47 @@
   --glass-blur: 18px;
   --hero-scrim: linear-gradient(180deg, rgba(7, 10, 18, 0.15) 0%,
                 rgba(7, 10, 18, 0.55) 55%, rgba(7, 10, 18, 0.97) 100%);
+
+  /* ── on-artwork surfaces (Game Details hero) ───────────────────
+     Chrome that sits on game art is *solid*, not glass. Translucent pills
+     read as washed-out over bright artwork and their fill shifts with
+     whatever is behind them; a filled surface with a hairline and a little
+     elevation reads deliberately at any brightness. This matches the
+     approved mockup, where every pill and button is an opaque dark chip. */
+  --on-art-solid: #151a26;
+  --on-art-solid-hover: #1f2637;
+  --on-art-line: rgba(255, 255, 255, 0.1);
+  --on-art-line-strong: rgba(255, 255, 255, 0.2);
+  --on-art-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+
+  /* Badge colour hierarchy: the launcher reads neutral, genres carry the
+     brand accent, progress carries amber. Opaque, so they never wash out. */
+  --pill-neutral-bg: #151a26;
+  --pill-neutral-line: rgba(255, 255, 255, 0.11);
+  --pill-accent-bg: #241d47;
+  --pill-accent-text: #bbabff;
+  --pill-accent-line: rgba(124, 92, 255, 0.42);
+  --pill-gold-bg: #2d2411;
+  --pill-gold-text: #f5d67a;
+  --pill-gold-line: rgba(250, 204, 21, 0.38);
+
+  /* Text tints for use over artwork, where --text-* would be too dim.
+     --on-art-faint is the floor: it is only ever used for small labels sitting
+     in the hero's lower band, where the scrim is at least 80% opaque, and it is
+     set high enough to clear 4.5:1 even when the artwork behind it is white. */
+  --on-art: #ffffff;
+  --on-art-strong: rgba(255, 255, 255, 0.92);
+  --on-art-muted: rgba(255, 255, 255, 0.76);
+  --on-art-faint: rgba(255, 255, 255, 0.64);
+
+  /* ── borderless surfaces ───────────────────────────────────────
+     Rows and tiles inside cards are separated by wash and whitespace
+     rather than rules, so sections are defined by space not outlines. */
+  --surface-1: rgba(255, 255, 255, 0.03);
+  --surface-2: rgba(255, 255, 255, 0.05);
+  --surface-line: rgba(255, 255, 255, 0.07);
+  --card-border: rgba(255, 255, 255, 0.05);
+  --card-border-hover: rgba(255, 255, 255, 0.09);
 
   /* ── motion ────────────────────────────────────────────────── */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -89,6 +167,49 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* The action row sheds padding in two steps before it is allowed to wrap, so
+   every normal desktop viewport keeps Play → Remove on one line. Measured
+   against the widest label set: the row needs ~772px at 18px padding, ~748px at
+   15px and ~718px at 12px, and the identity column is ~757px at 1280 wide. */
+@media (max-width: 1700px) {
+  :root {
+    --gd-btn-pad: 15px;
+  }
+}
+
+@media (max-width: 1300px) {
+  :root {
+    --gd-btn-pad: 12px;
+  }
+}
+
+/* Last step before wrapping is allowed. Below roughly this width the identity
+   column cannot hold seven 44px controls at any padding, and the composition is
+   close to stacking anyway. */
+@media (max-width: 1150px) {
+  :root {
+    --gd-btn-pad: 10px;
+  }
+}
+
+/* Narrow or short windows: the hero stays dominant, but it stops being taller
+   than the content it holds. Overriding the tokens keeps every dependent rule
+   in step instead of scattering breakpoints through the layout. */
+@media (max-width: 1000px) {
+  :root {
+    --gd-hero-h: 72vh;
+    --gd-hero-min: 500px;
+    --gd-cover-w: clamp(150px, 22vw, 200px);
+  }
+}
+
+@media (max-height: 720px) {
+  :root {
+    --gd-hero-h: 84vh;
+    --gd-hero-min: 440px;
+  }
 }
 
 html,

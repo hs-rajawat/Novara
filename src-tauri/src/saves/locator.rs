@@ -1,10 +1,23 @@
-//! Heuristic save-path detection for common OS locations.
+//! Heuristic save-path candidate generation.
 //!
-//! Searches AppData/Roaming, AppData/Local, AppData/LocalLow, Documents,
-//! Documents/My Games, and Saved Games for a folder whose name is a close
-//! match to the game title.  Returns results sorted by confidence.
+//! Searches the well-known roots supplied by a [`FileSystem`] for a directory whose
+//! name is a close match to the game title, and returns candidates sorted by
+//! confidence.
+//!
+//! Reads through the injected filesystem rather than calling `dirs::`/`std::fs`
+//! directly, which is what makes this testable at all — see
+//! [`crate::saves::fs`] and ADR-0012. Nothing here opens a file.
+//!
+//! **Scope note.** This is candidate generation *only*. Content plausibility
+//! (`verifier`), knowledge-base matching (`kb`), write observation (`witness`) and
+//! the decision that binds a path (`resolver`) are separate Phase 1 subsystems —
+//! see `docs/architecture/GAME_SAVE_DETECTION.md`. In particular `confidence` here
+//! scores *name similarity*, which §5.2 of that document explains is not the same
+//! question as "is this the save folder". It is deliberately unchanged in Phase 0.
 
 use serde::Serialize;
+
+use super::fs::FileSystem;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DetectedPath {
@@ -17,16 +30,17 @@ pub struct DetectedPath {
 
 /// Run detection for `title` and return all candidate paths, sorted by
 /// confidence descending, deduplicated.
-pub fn detect(title: &str) -> Vec<DetectedPath> {
+pub fn detect(fs: &dyn FileSystem, title: &str) -> Vec<DetectedPath> {
     let mut results: Vec<DetectedPath> = Vec::new();
 
-    for (root, label) in candidate_roots() {
-        if !root.exists() {
+    for root in fs.roots() {
+        if !fs.exists(&root.path) {
             continue;
         }
+        let label = root.kind.label();
         for (confidence, dir_name) in title_variants(title) {
-            let candidate = root.join(&dir_name);
-            if candidate.is_dir() {
+            let candidate = root.path.join(&dir_name);
+            if fs.is_dir(&candidate) {
                 results.push(DetectedPath {
                     path: candidate.display().to_string(),
                     confidence,
@@ -53,38 +67,6 @@ pub fn detect(title: &str) -> Vec<DetectedPath> {
     results.retain(|candidate| seen.insert(candidate.path.clone()));
 
     results
-}
-
-fn candidate_roots() -> Vec<(std::path::PathBuf, &'static str)> {
-    let mut roots: Vec<(std::path::PathBuf, &'static str)> = Vec::new();
-
-    // AppData/Roaming  (%APPDATA% / XDG_CONFIG_HOME / ~/Library/Application Support)
-    if let Some(p) = dirs::config_dir() {
-        roots.push((p, "AppData/Roaming"));
-    }
-
-    // AppData/Local  (%LOCALAPPDATA% on Windows)
-    if let Some(p) = dirs::data_local_dir() {
-        // On Windows: C:\Users\<user>\AppData\Local
-        // LocalLow is the parent's sibling — no stdlib constant for it.
-        if let Some(parent) = p.parent() {
-            roots.push((parent.join("LocalLow"), "AppData/LocalLow"));
-        }
-        roots.push((p, "AppData/Local"));
-    }
-
-    // Documents
-    if let Some(p) = dirs::document_dir() {
-        roots.push((p.join("My Games"), "Documents/My Games"));
-        roots.push((p.clone(), "Documents"));
-    }
-
-    // Saved Games  (%USERPROFILE%\Saved Games on Windows)
-    if let Some(home) = dirs::home_dir() {
-        roots.push((home.join("Saved Games"), "Saved Games"));
-    }
-
-    roots
 }
 
 /// Generate (confidence, dir_name_candidate) pairs for matching against a
@@ -169,3 +151,6 @@ fn is_number_token(s: &str) -> bool {
             | "XX"
     )
 }
+
+#[cfg(test)]
+mod tests;

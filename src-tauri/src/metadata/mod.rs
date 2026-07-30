@@ -28,15 +28,29 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 pub mod artwork_service;
-pub mod breaker;
 pub mod capability;
 pub mod identity;
 pub mod offline;
 pub mod providers;
 pub mod store;
 pub mod text_service;
-pub mod throttle;
 pub mod title_resolver;
+
+/// The shared outbound rate limiter, re-exported from [`crate::resolve`].
+///
+/// One instance is constructed at the composition root and shared by every
+/// network-touching provider, so the concurrency cap and minimum spacing bound
+/// NOVARA's *total* outbound rate rather than each call site's. Re-exported as a
+/// module so `metadata::throttle::Throttle` keeps resolving for providers.
+pub use crate::resolve::throttle;
+
+/// The per-provider circuit breaker, re-exported from [`crate::resolve`].
+///
+/// Trips a provider for the rest of a batch once it has produced enough
+/// `Temporary` misses, so a struggling endpoint is not hammered for the whole
+/// sweep. Generic over what is being resolved, so the save system's KB fetch will
+/// use the same one.
+pub use crate::resolve::breaker;
 
 #[cfg(test)]
 mod privacy_tests;
@@ -188,83 +202,13 @@ pub struct AssetDescriptor {
     pub provider: &'static str,
 }
 
-/// Why a provider reported `Lookup::Temporary` — see `Lookup` docs. Typed
-/// rather than a bare `String` so a future circuit breaker or backoff
-/// policy can match on `RateLimited` specifically (or `Timeout` vs.
-/// `NetworkError`) without every provider needing to agree on a string
-/// convention for the same underlying condition.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TemporaryReason {
-    /// The request timed out.
-    Timeout,
-    /// HTTP 429, or a provider-specific rate-limit signal.
-    RateLimited,
-    /// A transport-level failure — DNS, TLS, connection refused/reset.
-    NetworkError(String),
-    /// HTTP 5xx or an equivalent "the provider is having trouble" signal.
-    ServerError(String),
-    /// Any other condition a provider expects to potentially succeed on
-    /// retry but that doesn't fit a variant above.
-    Other(String),
-}
-
-/// Why a provider reported `Lookup::Permanent` — see `Lookup` docs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PermanentReason {
-    /// HTTP 404, or an equivalent "this id doesn't exist" signal.
-    NotFound,
-    /// The identifier this provider needs was present but malformed —
-    /// absent is `Lookup::Unsupported`, not this.
-    InvalidIdentifier,
-    /// The response was received but didn't parse, or parsed into a shape
-    /// this provider can't use.
-    MalformedResponse(String),
-    /// Any other condition a provider is confident won't change on retry.
-    Other(String),
-}
-
-/// The outcome of one provider lookup — `Found` plus three ways a provider
-/// can come back empty, so `MetadataService`/`ArtworkService` can react
-/// differently to each instead of treating every miss the same:
+/// Result classification for a provider lookup.
 ///
-///   - `Unsupported`: this provider fundamentally cannot resolve this
-///     identity — no matching `GameIdentifier`, or (like `OfflineProvider`)
-///     it never resolves anything, or (like `SteamLocalProvider` on a game
-///     Steam hasn't cached art for) it looked and there's nothing there to
-///     find. Not a failure: never logged as one, never recorded as a failed
-///     attempt, and services always fall through to the next provider
-///     immediately.
-///   - `Temporary(reason)`: a transient condition. Services still fall
-///     through to the next provider for *this* game, but repeated
-///     `Temporary` misses from the same provider across a batch — and
-///     `RateLimited` in particular — are the signal to circuit-break that
-///     provider for the rest of the run rather than hammering it further.
-///     The game stays eligible for a full retry next sweep — services must
-///     not persist this as a hard failure.
-///   - `Permanent(reason)`: a definitive negative for this specific
-///     (provider, game) pair. Services fall through to the next provider (a
-///     different provider or identifier scheme may still work) but stop
-///     asking *this* provider about *this* game — `ArtworkService`
-///     persists this via `Db::mark_artwork_failed` so a casual re-sweep
-///     doesn't repeat a call expected to fail the same way again;
-///     `MetadataService` should do the analogous thing once it has its own
-///     persisted state.
-///
-/// A provider that hits an error it didn't specifically anticipate (an I/O
-/// bug, an unexpected shape in an otherwise-successful response) should
-/// still classify it — `Permanent(Other(..))` if there's no reason to
-/// expect a retry would behave differently, `Temporary(Other(..))` if it
-/// plausibly would — rather than propagating a raw, unclassified error.
-/// There is deliberately no fourth, unclassified channel: forcing every
-/// miss through one of these three variants is what lets the
-/// classification actually be trusted.
-#[derive(Debug, Clone)]
-pub enum Lookup<T> {
-    Found(T),
-    Unsupported,
-    Temporary(TemporaryReason),
-    Permanent(PermanentReason),
-}
+/// Defined in [`crate::resolve`] and re-exported here: the four-way distinction
+/// between "cannot", "try later" and "never again" is not metadata-specific, and
+/// the save system's knowledge-base fetch and content extractors use the same
+/// types. Providers may keep importing these from `crate::metadata`.
+pub use crate::resolve::{Lookup, PermanentReason, TemporaryReason};
 
 /// What a provider supplies — declared explicitly via
 /// `ProviderIdentity::capabilities()` rather than left implicit in "which

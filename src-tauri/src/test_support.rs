@@ -352,6 +352,159 @@ impl crate::metadata::ArtworkProvider for FakeArtworkProvider {
     }
 }
 
+
+// ────────────────────────────────────────────────────────────────────
+// VirtualFs — an in-memory FileSystem for save detection
+// ────────────────────────────────────────────────────────────────────
+
+/// An in-memory [`FileSystem`](crate::saves::fs::FileSystem) for detection tests.
+///
+/// Detection previously called `dirs::`/`std::fs` directly, so a test read the
+/// developer's own `%APPDATA%`: outcomes depended on the machine and CI proved
+/// nothing. This declares the world instead, which is what makes the scenario
+/// corpus in `docs/testing/SAVE_DETECTION_TEST_PLAN.md` possible — hundreds of
+/// cases, no I/O, microseconds each.
+///
+/// Also records every path queried, so a test can assert that detection stayed
+/// inside its declared roots (invariant I3 in `docs/architecture/TESTING.md`).
+///
+/// Paths are normalised to forward slashes internally, so a fixture written with
+/// `/` matches a candidate built with `Path::join` on Windows.
+pub struct VirtualFs {
+    roots: Vec<crate::saves::fs::Root>,
+    dirs: std::collections::HashSet<String>,
+    files: std::collections::HashMap<String, crate::saves::fs::FileMeta>,
+    queried: std::sync::Mutex<Vec<String>>,
+}
+
+impl VirtualFs {
+    pub fn new() -> Self {
+        Self {
+            roots: Vec::new(),
+            dirs: std::collections::HashSet::new(),
+            files: std::collections::HashMap::new(),
+            queried: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Normalise to forward slashes so `/`-written fixtures match `Path::join`
+    /// output on every platform.
+    fn key(path: &std::path::Path) -> String {
+        path.to_string_lossy().replace('\\', "/")
+    }
+
+    /// Declare a search root. It is registered as a directory automatically —
+    /// a root that does not exist is expressed with [`Self::with_missing_root`].
+    pub fn with_root(mut self, kind: crate::saves::fs::RootKind, path: &str) -> Self {
+        self.roots.push(crate::saves::fs::Root {
+            path: std::path::PathBuf::from(path),
+            kind,
+        });
+        self.dirs.insert(path.replace('\\', "/"));
+        self
+    }
+
+    /// Declare a root that is absent on this machine, so the "skip missing roots"
+    /// path can be exercised.
+    pub fn with_missing_root(mut self, kind: crate::saves::fs::RootKind, path: &str) -> Self {
+        self.roots.push(crate::saves::fs::Root {
+            path: std::path::PathBuf::from(path),
+            kind,
+        });
+        self
+    }
+
+    /// Declare a directory. Ancestors are not implied — declare what the test needs.
+    pub fn with_dir(mut self, path: &str) -> Self {
+        self.dirs.insert(path.replace('\\', "/"));
+        self
+    }
+
+    /// Declare a file of a given size.
+    pub fn with_file(mut self, path: &str, len: u64) -> Self {
+        self.files.insert(
+            path.replace('\\', "/"),
+            crate::saves::fs::FileMeta {
+                is_dir: false,
+                len,
+                modified: None,
+            },
+        );
+        self
+    }
+
+    /// Every path detection asked about, in order.
+    pub fn queried_paths(&self) -> Vec<String> {
+        self.queried.lock().unwrap().clone()
+    }
+
+    fn record(&self, path: &std::path::Path) {
+        self.queried.lock().unwrap().push(Self::key(path));
+    }
+}
+
+impl Default for VirtualFs {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl crate::saves::fs::FileSystem for VirtualFs {
+    fn roots(&self) -> Vec<crate::saves::fs::Root> {
+        self.roots.clone()
+    }
+
+    fn exists(&self, path: &std::path::Path) -> bool {
+        self.record(path);
+        let k = Self::key(path);
+        self.dirs.contains(&k) || self.files.contains_key(&k)
+    }
+
+    fn read_dir(&self, path: &std::path::Path) -> std::io::Result<Vec<crate::saves::fs::DirEntryMeta>> {
+        self.record(path);
+        let prefix = format!("{}/", Self::key(path));
+        if !self.dirs.contains(&Self::key(path)) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no such directory",
+            ));
+        }
+        // Direct children only — anything with a further `/` is a grandchild.
+        let mut out = Vec::new();
+        for (d, is_dir) in self
+            .dirs
+            .iter()
+            .map(|d| (d, true))
+            .chain(self.files.keys().map(|f| (f, false)))
+        {
+            if let Some(rest) = d.strip_prefix(&prefix) {
+                if !rest.is_empty() && !rest.contains('/') {
+                    out.push(crate::saves::fs::DirEntryMeta {
+                        name: rest.to_string(),
+                        is_dir,
+                    });
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    fn metadata(&self, path: &std::path::Path) -> std::io::Result<crate::saves::fs::FileMeta> {
+        self.record(path);
+        let k = Self::key(path);
+        if self.dirs.contains(&k) {
+            return Ok(crate::saves::fs::FileMeta {
+                is_dir: true,
+                len: 0,
+                modified: None,
+            });
+        }
+        self.files.get(&k).cloned().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "no such path")
+        })
+    }
+}
+
 #[cfg(test)]
 mod harness_tests {
     use super::*;

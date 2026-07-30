@@ -1,0 +1,1128 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   NOVARA — Game Details
+
+   The flagship page. Implements GAME_DETAILS_REDESIGN.md: one continuous
+   hero owns the first viewport, the artwork is the page, and every piece of
+   identity (cover, logo, badges, description, metadata, actions) composes
+   inside it. Below the fold the page goes quiet — a hairline tab strip, soft
+   cards, whitespace instead of outlines.
+
+   Kept in its own sheet rather than bolted onto app.css because this page is
+   a composition, not a collection of shared widgets: almost nothing here is
+   reused elsewhere, and app.css's dashboard-oriented primitives (.btn,
+   .list, .chip, .stat-card) are deliberately *not* what it is built from.
+
+   Chrome that sits on artwork uses the on-art token set (--glass-*, --on-art-*)
+   rather than the slate surface stack; see theme.css for why.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Hero ──────────────────────────────────────────────────────────────
+   Full-bleed: cancels `.content`'s gutter and top padding so the artwork
+   meets the top bar and both window edges. It never ends on a border or a
+   radius — the scrim's last stop *is* --bg-0, so the hero dissolves into the
+   page instead of stopping. */
+.gd-hero {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: flex-end;
+  /* Height no longer costs artwork. The art below fits the hero's *width*, so
+     the crop is independent of how tall this box is — height now only decides
+     how much of the composition sits on art versus on the fade beneath it. The
+     ceiling keeps that fade band proportionate on unusually tall windows. */
+  min-height: min(max(var(--gd-hero-min), var(--gd-hero-h)), 52vw);
+  margin: calc(-1 * var(--content-pad-y)) calc(-1 * var(--content-pad-x))
+          var(--space-3);
+  /* Top padding only matters when the composition outgrows the hero (a very long
+     title, or wrapped actions on a narrow window): it keeps content clear of the
+     back control instead of letting the two collide. */
+  padding: var(--space-8) var(--gd-hero-pad-x) var(--gd-hero-pad-b);
+  /* The colour the artwork's own fade lands on, so the two are continuous. */
+  background: var(--bg-0);
+  overflow: hidden;
+}
+
+/* Fit to width, anchored top — never a horizontal crop.
+   
+   `cover` in a box taller than the source has to scale up to fill the height,
+   and with a 3.1:1 key art in a 1.9:1 box that threw away a third of the image
+   from the sides: the sun cut in half, the riders pushed out of frame. Fitting
+   the width instead means the full width of the key art is always visible at
+   any hero height — the composition the artist framed, not a centre slice of
+   it. Height follows the source's own ratio, so this holds for a 3.1:1 Steam
+   hero, a 21:9 one, or anything else; only a source *taller* than the hero gets
+   clipped, and then from the bottom, which the fade covers.
+   
+   `min-height` is the no-artwork case: it gives GameArtwork's deterministic
+   gradient a band to fill instead of collapsing to nothing. It only exceeds the
+   image for sources wider than ~3.6:1, and then the shortfall sits under the
+   fade's opaque end where it does not read. */
+.gd-hero-art {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Must beat `.artwork-hero`'s aspect-ratio: the whole point is that the height
+     comes from the *source's* ratio, not from the 21/9 the token assumes. With a
+     forced ratio the wrapper would be taller than a 3.1:1 image and leave a hard
+     edge where the picture stops. */
+  aspect-ratio: auto;
+  height: auto;
+  min-height: 58%;
+  z-index: 0;
+}
+
+.gd-hero-art .artwork-img {
+  position: static;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Dissolves the artwork at its own bottom edge, wherever the source's ratio puts
+   it, landing on exactly the colour behind it. The join is therefore seamless by
+   construction rather than by a tuned percentage that only holds for one ratio. */
+.gd-hero-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 36%,
+              rgba(7, 10, 18, 0.5) 72%, #070a12 100%);
+}
+
+/* Legibility only. The artwork's own fade handles the dissolve into the page, so
+   this layer is just what the text needs to read: a narrow wash behind the
+   identity column that clears by two thirds of the width, a soft lift near the
+   bottom, and a whisper of top shade for the back control.
+   
+   Deliberately lighter than a full scrim — the composition is anchored left, so
+   darkening the right side would only hide artwork that nothing sits on
+   (DESIGN.md §6.1.1). */
+.gd-hero-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(7, 10, 18, 0.26) 0%, transparent 16%),
+    linear-gradient(90deg, rgba(7, 10, 18, 0.8) 0%, rgba(7, 10, 18, 0.5) 24%,
+                    rgba(7, 10, 18, 0.1) 48%, transparent 62%),
+    /* Lands on --bg-0 at the hero's own bottom edge, not the artwork's. The
+       artwork's fade handles a source shorter than the hero; this handles one
+       that is taller, whose fade gets clipped by `overflow: hidden` and would
+       otherwise leave the hero ending on a hard horizontal edge. */
+    linear-gradient(0deg, #070a12 0%, rgba(7, 10, 18, 0.82) 7%,
+                    rgba(7, 10, 18, 0.34) 30%, transparent 56%);
+}
+
+.gd-hero-back {
+  position: absolute;
+  z-index: 3;
+  top: var(--space-3);
+  left: var(--gd-hero-pad-x);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px 8px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--on-art-strong);
+  background: var(--on-art-solid);
+  border: 1px solid var(--on-art-line);
+  box-shadow: var(--on-art-shadow);
+  transition: color var(--dur-fast), background var(--dur-fast),
+              border-color var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+}
+
+.gd-hero-back:hover {
+  color: var(--on-art);
+  background: var(--on-art-solid-hover);
+  border-color: var(--on-art-line-strong);
+  transform: translateX(-2px);
+}
+
+/* Two stacked parts, so the action row is a sibling of the cover rather than a
+   child of the text column.
+   
+   The row therefore starts at the composition's left edge — under the poster, not
+   indented past it — which is both what a launcher action bar should look like
+   and what fills the dead space that used to sit beneath the cover. It also frees
+   the row from the text column's width, so it no longer wraps on any desktop
+   size.
+   
+   `max-width` is what makes this read as one block weighted to the left rather
+   than a row spanning the frame: it stops short of the hero's right edge so the
+   artwork keeps an open field there, and is released below 1500px where a narrow
+   hero has no open field left to protect. */
+.gd-hero-inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: min(1180px, 86%);
+}
+
+/* Poster and text. Bottom-aligned to each other, so the poster now rises to sit
+   higher in the frame than it did when the action row shared its row — the
+   composition closes up instead of leaving a gap under the cover.
+   
+   The gap is deliberately not tight: the logo must not read as glued to the
+   poster's edge. */
+.gd-hero-top {
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(28px, 3vw, 44px);
+  width: 100%;
+}
+
+.gd-hero-cover {
+  flex: 0 0 var(--gd-cover-w);
+  width: var(--gd-cover-w);
+  border-radius: clamp(12px, 1.1vw, 18px);
+  overflow: hidden;
+  /* Soft and wide rather than dark and tight, plus a hairline of light along the
+     top edge — enough to lift the poster off the artwork without a border. */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.28), 0 24px 60px rgba(0, 0, 0, 0.55),
+              inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.gd-hero-id {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The logo is preferred when the game has one; the <h1> stays in the document
+   for assistive technology and is only hidden visually. */
+.gd-hero-logo {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(560px, 100%);
+  max-height: clamp(76px, 11vh, 132px);
+  object-fit: contain;
+  object-position: left bottom;
+  margin-bottom: var(--space-3);
+  filter: drop-shadow(0 8px 28px rgba(7, 10, 18, 0.75));
+}
+
+.gd-hero-title {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: clamp(38px, 4.4vw, 68px);
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  color: var(--on-art);
+  text-wrap: balance;
+  text-shadow: 0 2px 28px rgba(0, 0, 0, 0.55);
+}
+
+/* Present for screen readers and the document outline when the logo is shown.
+   Not `display: none` — that would remove it from the accessibility tree. */
+.gd-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip-path: inset(50%);
+}
+
+/* ── Badges ───────────────────────────────────────────────────────────── */
+
+.gd-hero-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+/* Solid, not glass. A translucent pill over artwork washes out and its fill
+   shifts with whatever is behind it; a filled chip with a hairline and a little
+   elevation reads deliberately at any brightness — and matches the mockup.
+   
+   Sized so a launcher mark has room to be recognisable: 32px tall with 14px of
+   side padding, which is what turns the source badge from a tag into an identity
+   badge. */
+.gd-pill,
+.platform-badge.gd-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  color: var(--on-art-strong);
+  background: var(--pill-neutral-bg);
+  border: 1px solid var(--pill-neutral-line);
+  box-shadow: var(--on-art-shadow), var(--inner-light);
+}
+
+/* Launcher: neutral dark, with the mark carrying the store's own colour. */
+.platform-badge.gd-pill {
+  padding-left: 12px;
+  color: var(--on-art);
+  font-weight: 600;
+}
+
+/* Genre: the brand accent, opaque so it never dulls against the art. */
+.gd-pill.is-genre {
+  color: var(--pill-accent-text);
+  background: var(--pill-accent-bg);
+  border-color: var(--pill-accent-line);
+}
+
+/* Progress: amber, the same language the earned-achievement tiles speak. */
+.gd-pill.is-progress {
+  color: var(--pill-gold-text);
+  background: var(--pill-gold-bg);
+  border-color: var(--pill-gold-line);
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* Library-integrity states keep their semantics from DESIGN.md §23.4, opaque so
+   a warning never reads as a faded decoration. */
+.gd-pill.is-danger {
+  color: #ffc9c9;
+  background: #3a1c1f;
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.gd-pill.is-neutral {
+  color: var(--on-art-strong);
+  background: #1f2531;
+  border-color: rgba(148, 163, 184, 0.36);
+}
+
+/* ── Description ──────────────────────────────────────────────────────── */
+
+.gd-hero-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* Measure, not container: the paragraph should end on a comfortable line
+     length rather than run to the edge of the block. `ch` is the advance of "0",
+     which is wider than average prose, so this lands near 70 characters. */
+  max-width: min(68ch, 100%);
+  /* A step and a half of separation: the metadata below is a different layer of
+     information, and it must not read as a fourth line of the description. */
+  margin: 0 0 var(--space-6);
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--on-art-muted);
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Metadata ─────────────────────────────────────────────────────────── */
+
+/* Rows, not statistic cards: separated by space alone — no borders, no icons,
+   no single-value widgets. */
+.gd-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) clamp(28px, 3vw, 52px);
+  /* Last element of the text column — the action row below is a sibling, and its
+     separation comes from `.gd-hero-inner`'s row gap. */
+  margin: 0;
+}
+
+.gd-meta-item {
+  min-width: 0;
+}
+
+.gd-meta-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--on-art-faint);
+}
+
+.gd-meta-value {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--on-art-strong);
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Actions ──────────────────────────────────────────────────────────── */
+
+/* One action bar, read as three groups: Play · the four game actions · the two
+   utilities. The rhythm is a single 3:1 ratio off the 8px scale — 24px between
+   groups, 8px within them — which is what makes the grouping read as deliberate
+   rather than as seven controls spaced evenly. Nothing here is nudged by hand.
+   
+   Play's prominence comes from colour, its own group, and the whitespace around
+   it; it is the same height, radius, type size and icon size as every other
+   button in the row. */
+.gd-hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  /* Row gap only applies if a group is forced onto a second line on a genuinely
+     narrow window; it is larger than the group gap so the wrap reads as rows. */
+  gap: var(--space-2) var(--space-3);
+}
+
+.gd-action-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.gd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* On the scale, like every other gap in the row. */
+  gap: var(--space-1);
+  height: var(--gd-control-h);
+  padding: 0 var(--gd-btn-pad);
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  color: var(--on-art);
+  /* Solid, per the mockup: filled dark chips with a hairline, not glass. */
+  background: var(--on-art-solid);
+  border: 1px solid var(--on-art-line);
+  box-shadow: var(--on-art-shadow), var(--inner-light);
+  transition: background var(--dur-fast), border-color var(--dur-fast),
+              color var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+}
+
+.gd-btn:hover {
+  color: var(--on-art);
+  background: var(--on-art-solid-hover);
+  border-color: var(--on-art-line-strong);
+}
+
+.gd-btn:active {
+  transform: translateY(1px);
+}
+
+.gd-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Same height, radius, type size, icon size and border weight as every other
+   button — so the row shares one baseline and one optical family. What sets Play
+   apart is the gradient, its own group, and slightly deeper side padding for
+   presence. Deliberately no `min-width` and no larger type: prominence from
+   colour and placement, never from bulk. */
+.gd-btn-play {
+  padding: 0 calc(var(--gd-btn-pad) + 6px);
+  font-weight: 650;
+  color: var(--on-art);
+  background: var(--gradient-accent);
+  border-color: transparent;
+  /* Elevation, not a glow: the button should look set into the page rather than
+     lit up. Deliberately not --accent-glow, which is brighter than this page
+     wants. */
+  box-shadow: 0 8px 28px rgba(124, 92, 255, 0.34), var(--inner-light);
+}
+
+.gd-btn-play:hover {
+  filter: brightness(1.07);
+  background: var(--gradient-accent);
+  border-color: transparent;
+}
+
+/* Utility pair: identical square footprint, border and icon size, so Refresh and
+   Remove read as one connected control rather than two odd ones out. */
+.gd-btn-icon {
+  width: var(--gd-control-h);
+  padding: 0;
+  flex: 0 0 var(--gd-control-h);
+}
+
+.gd-btn.is-fav {
+  color: var(--pill-gold-text);
+  background: var(--pill-gold-bg);
+  border-color: var(--pill-gold-line);
+}
+
+.gd-btn.is-fav svg {
+  fill: currentColor;
+}
+
+.gd-btn-danger:hover {
+  color: #ffc9c9;
+  background: #3a1c1f;
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────── */
+
+/* The section nav, and nothing else. It briefly hosted the library-status
+   control on its right-hand side; that control is gone from this page entirely,
+   so the strip is a plain tablist again. */
+.gd-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: clamp(20px, 2.4vw, 40px);
+  /* Tight to the hero above and close to the cards below: the tab strip is a
+     divider between two parts of one page, not a section of its own. */
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--surface-line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.gd-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.gd-tab {
+  position: relative;
+  /* No horizontal padding: a 1px inset put the first tab's text a pixel off the
+     gutter every other element on the page aligns to. */
+  padding: 0 0 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  transition: color var(--dur-med) var(--ease-out);
+}
+
+.gd-tab:hover {
+  color: var(--text-secondary);
+}
+
+.gd-tab.is-active {
+  color: var(--text-primary);
+}
+
+/* A hairline, not a bar: refined rather than loud. */
+.gd-tab::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1.5px;
+  background: var(--accent-bright);
+  opacity: 0;
+  transform: scaleX(0.4);
+  transition: transform var(--dur-med) var(--ease-out),
+              opacity var(--dur-med) var(--ease-out);
+}
+
+.gd-tab.is-active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.gd-tab:focus-visible {
+  outline-offset: 5px;
+  border-radius: 3px;
+}
+
+/* ── Panels & cards ───────────────────────────────────────────────────── */
+
+.gd-panel {
+  animation: gd-fade var(--dur-med) var(--ease-out);
+}
+
+.gd-panel:focus {
+  outline: none;
+}
+
+@keyframes gd-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.gd-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .gd-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.gd-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Subtle border, large radius, soft elevation, nothing else. */
+.gd-card {
+  padding: clamp(20px, 2vw, 28px);
+  border-radius: var(--radius-2xl);
+  background: var(--bg-1);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--inner-light), 0 14px 34px rgba(0, 0, 0, 0.2);
+  transition: border-color var(--dur-med) var(--ease-out);
+}
+
+.gd-card:hover {
+  border-color: var(--card-border-hover);
+}
+
+.gd-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* No icon, no accent colour, no uppercase: the card title is a quiet label. */
+.gd-card-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.gd-card-note {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  font-feature-settings: "tnum";
+}
+
+/* Quiet text-button for inline affordances inside rows (Locate, Change). */
+.gd-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 2px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  white-space: nowrap;
+  transition: color var(--dur-fast);
+}
+
+.gd-link:hover {
+  color: var(--accent-bright);
+}
+
+.gd-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Card-header action: a real outlined button, not a hyperlink. Used for every
+   card's primary affordance so the panels read consistently. */
+.gd-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  transition: background var(--dur-fast), border-color var(--dur-fast),
+              color var(--dur-fast);
+}
+
+.gd-btn-outline:hover {
+  background: var(--bg-2);
+  border-color: rgba(124, 92, 255, 0.45);
+  color: var(--text-primary);
+}
+
+.gd-btn-outline:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: transparent;
+  border-color: var(--border-soft);
+}
+
+/* Empty states inside a card are a sentence, not a 72px illustration block. */
+.gd-empty {
+  margin: 0;
+  padding: var(--space-2) 0 var(--space-1);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-tertiary);
+}
+
+/* ── Progress & achievements ──────────────────────────────────────────── */
+
+.gd-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.gd-metric-value {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+.gd-metric-caption {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  font-feature-settings: "tnum";
+}
+
+.gd-bar {
+  height: 6px;
+  border-radius: 999px;
+  /* A real surface step, not a 7% wash: the empty part of the bar has to read as
+     the remaining distance rather than as nothing at all. */
+  background: var(--bg-3);
+  overflow: hidden;
+}
+
+.gd-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--gradient-accent);
+  transition: width 0.6s var(--ease-out);
+}
+
+/* Count line, below the bar: how many of how many, in words. Separate from the
+   headline percentage above the bar so the card reads top to bottom as
+   "how far along" → "the bar" → "the exact numbers" → "what is left". */
+.gd-ach-count {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* Trophy shelf. Locked entries are the normal state of this strip — most games
+   are mostly unearned — so a locked tile has to look like a collectible waiting
+   to be claimed, not like a disabled control. It sits a full surface step above
+   the card, carries a real border and a legible lock, and answers to hover.
+   
+   Marked aria-hidden in the markup: it restates the count line above it, and
+   eight unlabelled icons would be noise in a screen reader. */
+.gd-ach-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: var(--space-2);
+}
+
+.gd-ach-tile {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  box-shadow: var(--inner-light);
+  transition: background var(--dur-fast), border-color var(--dur-fast),
+              color var(--dur-fast), transform var(--dur-fast) var(--ease-out);
+}
+
+.gd-ach-tile:hover {
+  background: var(--bg-3);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  transform: translateY(-2px);
+}
+
+/* Earned: the one place on this page gold is spent. */
+.gd-ach-tile.is-unlocked {
+  background: var(--warning-soft);
+  border-color: rgba(250, 204, 21, 0.34);
+  color: var(--warning);
+}
+
+.gd-ach-tile.is-unlocked:hover {
+  background: rgba(250, 204, 21, 0.22);
+  border-color: rgba(250, 204, 21, 0.5);
+  color: var(--warning);
+}
+
+.gd-ach-tile.is-more {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-secondary);
+  font-feature-settings: "tnum";
+}
+
+/* The library completion state (Playing / Backlog / Completed / …) is
+   deliberately absent from this page: Game Details is about the game, and where
+   that control belongs globally is a separate decision. Its styles were removed
+   with it rather than left behind as dead rules. */
+
+.gd-ach-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: var(--space-3);
+}
+
+.gd-ach {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 11px 13px;
+  border-radius: 14px;
+  background: var(--surface-1);
+  transition: background var(--dur-fast);
+}
+
+.gd-ach:hover {
+  background: var(--surface-2);
+}
+
+.gd-ach-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-tertiary);
+}
+
+.gd-ach.is-unlocked .gd-ach-mark {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.gd-ach-text {
+  min-width: 0;
+}
+
+.gd-ach-name {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gd-ach.is-unlocked .gd-ach-name {
+  color: var(--text-primary);
+}
+
+.gd-ach-when {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ── About ────────────────────────────────────────────────────────────── */
+
+/* Space separates the rows: no rules, no zebra, no uppercase label column. */
+.gd-facts {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+}
+
+.gd-fact {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.gd-fact dt {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.gd-fact dd {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.gd-fact-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gd-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--surface-line);
+}
+
+/* Icon-bearing chip: platform, feature and controller values read faster as a
+   mark plus a short label than as prose. The mark is muted so the label leads. */
+.gd-tag svg {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+}
+
+.gd-tag.is-strong {
+  color: var(--text-primary);
+}
+
+.gd-tag.is-strong svg {
+  color: var(--accent-bright);
+}
+
+/* Long value sets (Steam ships up to 28 languages) are truncated to a readable
+   number and the rest disclosed on demand — the data is all present, the initial
+   view just isn't a wall of chips. */
+.gd-tag-more {
+  color: var(--accent-bright);
+  background: var(--accent-soft);
+  font-weight: 500;
+  transition: background var(--dur-fast);
+}
+
+.gd-tag-more:hover {
+  background: rgba(124, 92, 255, 0.26);
+}
+
+@media (max-width: 700px) {
+  .gd-fact {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+
+/* ── Rows (installations, sessions, saves) ────────────────────────────── */
+
+.gd-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gd-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--surface-1);
+  transition: background var(--dur-fast);
+}
+
+.gd-row:hover {
+  background: var(--surface-2);
+}
+
+.gd-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.gd-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.gd-row-title {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-primary);
+}
+
+.gd-row-sub {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-feature-settings: "tnum";
+}
+
+.gd-row-path {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.gd-row-path.is-muted {
+  color: var(--text-tertiary);
+}
+
+.gd-row-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.gd-row-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.gd-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  font-feature-settings: "tnum";
+}
+
+/* Semantic states only, per DESIGN.md §23.4 and §27.3. */
+.gd-flag.is-danger {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.gd-flag.is-neutral {
+  color: var(--text-secondary);
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.gd-flag.is-accent {
+  color: var(--accent-bright);
+  background: var(--accent-soft);
+}
+
+.gd-flag.is-info {
+  color: var(--accent-2);
+  background: var(--accent-2-soft);
+}
+
+/* ── Artwork ──────────────────────────────────────────────────────────── */
+
+.gd-art-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.gd-art {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+
+.gd-art figcaption {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* A display, not a control. The per-slot "change" pickers were removed as a UI
+   simplification; the capability behind them is untouched (set_cover_path /
+   set_hero_path / set_logo_path are still registered and `user_locked` still
+   protects a user's own artwork), so nothing here should imply an interaction
+   that no longer exists. */
+.gd-art-frame {
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+/* Ratios match DESIGN.md §28: cover stays 2:3, hero stays 21:9. */
+.gd-art-cover {
+  width: 152px;
+  height: 228px;
+}
+
+.gd-art-hero {
+  width: 357px;
+  height: 153px;
+}
+
+.gd-art-logo {
+  width: 268px;
+  height: 112px;
+  display: grid;
+  place-items: center;
+}
+
+/* ── Skeleton ─────────────────────────────────────────────────────────
+   Occupies the hero's exact footprint so arrival causes no layout shift
+   (DESIGN.md §6.1.3). */
+.gd-skeleton {
+  min-height: min(max(var(--gd-hero-min), var(--gd-hero-h)), 52vw);
+  margin: calc(-1 * var(--content-pad-y)) calc(-1 * var(--content-pad-x)) 0;
+  background: linear-gradient(0deg, var(--bg-0) 0%, var(--bg-1) 70%);
+}
+
+/* ── Narrow layout ────────────────────────────────────────────────────── */
+
+/* Left-weighting is a wide-window idea. Once the hero is narrower than this
+   there is no open field left to protect, and the action row needs the width
+   more than the artwork does. */
+@media (max-width: 1500px) {
+  .gd-hero-inner {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 820px) {
+  .gd-hero-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .gd-hero-desc {
+    -webkit-line-clamp: 2;
+  }
+}

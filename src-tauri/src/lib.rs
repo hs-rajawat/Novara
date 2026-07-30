@@ -8,7 +8,8 @@
 //!   models     — domain structs (Game, Achievement, …) shared with frontend
 //!   scanner    — pluggable game-source scanners
 //!   metadata   — pluggable metadata providers
-//!   save_mgr   — save folder backup / restore
+//!   resolve    — shared resolution machinery (Lookup, throttle, breaker)
+//!   saves      — save detection, resolution and backup / restore
 //!   playtime   — process watcher + idle detection
 //!   commands   — Tauri IPC handlers (the only place that touches AppHandle)
 //!   state      — AppState (holds Db, EventBus, configs, services)
@@ -22,8 +23,8 @@ pub mod launcher;
 pub mod metadata;
 pub mod models;
 pub mod playtime;
-pub mod save_detect;
-pub mod save_mgr;
+pub mod resolve;
+pub mod saves;
 pub mod scanner;
 pub mod sources;
 pub mod state;

@@ -17,7 +17,7 @@ use crate::integrity::IntegrityService;
 use crate::metadata::artwork_service::ArtworkService;
 use crate::metadata::text_service::MetadataService;
 use crate::playtime::PlaytimeTracker;
-use crate::save_mgr::SaveManager;
+use crate::saves::vault::SaveManager;
 use crate::scanner::ScannerOrchestrator;
 
 pub struct AppState {
@@ -60,7 +60,7 @@ impl AppState {
         // minimum request spacing bound NOVARA's *total* outbound rate rather
         // than each call site's. Both fill services and asset downloads share
         // it deliberately.
-        let throttle = Arc::new(crate::metadata::throttle::Throttle::default());
+        let throttle = Arc::new(crate::resolve::throttle::Throttle::default());
         let metadata = Arc::new(MetadataService::new(
             db.clone(),
             bus.clone(),

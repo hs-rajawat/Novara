@@ -237,7 +237,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
-  padding: 28px 32px 80px;
+  padding: var(--content-pad-y) var(--content-pad-x) 80px;
   animation: page-enter var(--dur-med) var(--ease-out);
 }
 
@@ -429,17 +429,6 @@
   height: 36px;
   padding: 0;
   flex: 0 0 36px;
-}
-
-.icon-btn.fav-on {
-  color: var(--warning);
-  border-color: rgba(250, 204, 21, 0.35);
-  background: var(--warning-soft);
-}
-
-.icon-btn.fav-on svg {
-  fill: currentColor;
-  filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.5));
 }
 
 .spin {
@@ -1270,6 +1259,22 @@ a.list-row {
   background: var(--platform-tone, var(--text-tertiary));
 }
 
+/* With a launcher mark the dot is redundant — the glyph carries the identity and
+   inherits the same source tone, so the badge gains branding without gaining
+   weight. */
+.platform-badge.has-icon::before {
+  display: none;
+}
+
+.platform-badge.has-icon svg {
+  flex: 0 0 auto;
+  color: var(--platform-tone, currentColor);
+  /* At 13px a 2px stroke on the 24-unit grid renders at ~1.08px, which reads
+     lighter than the 500-weight label beside it. A small bump matches the two
+     optically without making the mark look heavy. */
+  stroke-width: 2.25;
+}
+
 .platform-badge.tone-steam    { --platform-tone: #66c0f4; }
 .platform-badge.tone-epic     { --platform-tone: #e2e8f0; }
 .platform-badge.tone-gog      { --platform-tone: #b389f9; }
@@ -1297,28 +1302,10 @@ a.list-row {
   white-space: nowrap;
 }
 
-.chip-missing {
-  background: var(--danger-soft);
-  color: var(--danger);
-  border-color: rgba(248, 113, 113, 0.3);
-  text-transform: none;
-}
-
-/* Same semantics as the .save-badge states in the Installations list: deleted
-   is a real problem, offline is an unplugged drive and must not alarm. */
-.chip-deleted {
-  background: var(--danger-soft);
-  color: var(--danger);
-  border-color: rgba(248, 113, 113, 0.3);
-  text-transform: none;
-}
-
-.chip-offline {
-  background: rgba(148, 163, 184, 0.12);
-  color: var(--text-secondary);
-  border-color: rgba(148, 163, 184, 0.3);
-  text-transform: none;
-}
+/* Install-status variants used to live here. The only consumer was Game
+   Details, which now expresses those states as on-artwork pills (.gd-pill.is-*)
+   in the hero and as row flags (.gd-flag.is-*) in the Installations card —
+   same semantics as DESIGN.md §23.4, appropriate surfaces. */
 
 .genre-chips {
   display: flex;
@@ -1445,172 +1432,12 @@ a.list-row {
   transition: width 0.6s var(--ease-out);
 }
 
-/* ═══════════ Game details ═══════════ */
-
-.details-hero {
-  position: relative;
-  height: clamp(280px, 38vw, 480px);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  border: 1px solid var(--border-soft);
-}
-
 /* Lets a GameArtwork fill a parent-defined box (clamp()'d height above)
    instead of computing its own height from --hero-ratio/--cover-ratio. */
 .artwork-fill {
   aspect-ratio: auto;
   width: 100%;
   height: 100%;
-}
-
-.details-hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, transparent 25%,
-              rgba(7, 10, 18, 0.55) 72%, rgba(7, 10, 18, 0.94) 100%);
-}
-
-/* Sits inside the hero, above the band the cover poster occupies.
- *
- * The poster is pulled `--details-overlap` up into the hero's bottom-left, which
- * is where this logo used to sit — and because `.details-hero` is
- * `position: relative` with `z-index: auto` it creates no stacking context, so
- * this element's `z-index: 2` outranked `.details-head`'s `z-index: 1` in the
- * root context and painted the logo on top of the cover art. The cover often
- * contains the game's logo already, so the result was a doubled, cluttered
- * poster.
- *
- * Raising the offset past the overlap keeps the hero's presentation as it was —
- * same corner, same size, same drop shadow — while leaving the cover art
- * completely unobscured. Giving `.details-head` a higher z-index instead would
- * have hidden the logo behind the poster and clipped it. */
-.details-hero-logo {
-  position: absolute;
-  left: 20px;
-  bottom: calc(var(--details-overlap) + 18px);
-  z-index: 2;
-  max-width: min(320px, 46%);
-  max-height: 96px;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 4px 18px rgba(7, 10, 18, 0.65));
-}
-
-.details-back {
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-primary);
-  background: rgba(7, 10, 18, 0.6);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border-soft);
-  border-radius: 999px;
-  padding: 6px 14px 6px 10px;
-  transition: background var(--dur-fast), border-color var(--dur-fast);
-}
-
-.details-back:hover {
-  background: rgba(7, 10, 18, 0.85);
-  border-color: var(--border-strong);
-}
-
-.details-head {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: flex-end;
-  gap: 26px;
-  flex-wrap: wrap;
-  margin: calc(-1 * var(--details-overlap)) 24px 30px;
-}
-
-.details-cover {
-  width: 180px;
-  flex: 0 0 180px;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-2);
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.6);
-}
-
-.details-title-block {
-  flex: 1;
-  min-width: 240px;
-  padding-bottom: 6px;
-}
-
-.details-title {
-  font-size: 30px;
-  font-weight: 800;
-  letter-spacing: -0.6px;
-  margin: 0 0 12px;
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
-}
-
-.details-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.details-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-  padding-bottom: 6px;
-}
-
-/* ═══════════ Artwork pickers ═══════════ */
-
-.artwork-row {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.artwork-slot {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* A display, not a control. The dashed border and accent-on-hover were
-   affordances for the per-slot picker buttons that used to sit beneath these
-   previews; with those gone, both would promise an interaction that no longer
-   exists. */
-.artwork-preview {
-  background: var(--bg-2);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-}
-
-.artwork-preview-cover {
-  width: 116px;
-  height: 155px;
-}
-
-.artwork-preview-hero {
-  width: 280px;
-  height: 118px;
-}
-
-.artwork-preview-logo {
-  width: 220px;
-  height: 92px;
 }
 
 /* ═══════════ Recently played (Dashboard) ═══════════ */

@@ -48,6 +48,10 @@ impl AppError {
             Self::Invalid(_) => "invalid",
             Self::Scanner(_) => "scanner",
             Self::Metadata(_) => "metadata",
+            // Wire contract, not a module path. The frontend matches on this
+            // string (`src/lib/errors.ts`, asserted in `errors.test.ts`), so it
+            // stays `save_mgr` even though the module is now `saves::vault`.
+            // Renaming it is a frontend-visible change, not a refactor.
             Self::SaveMgr(_) => "save_mgr",
             Self::Other(_) => "other",
         }

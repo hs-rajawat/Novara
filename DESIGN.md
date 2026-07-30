@@ -1,7 +1,7 @@
 # NOVARA — Design System & Visual Language Specification
 
 > **Single Source of Truth** for NOVARA's User Interface and User Experience.  
-> Document Version: 1.0.0 | Official Design System Specification.
+> Document Version: 1.1.0 | Official Design System Specification.
 
 ---
 
@@ -149,7 +149,38 @@ NOVARA structures visual depth through a dark, multi-layered surface stack. Dept
 | `--danger` | `#f87171` | Crimson Red; missing/deleted installation status, destructive buttons, error toast. |
 | `--danger-soft` | `rgba(248, 113, 113, 0.12)` | Soft red wash for error badges and destructive action backgrounds. |
 
-### 8.6 Platform Identity Tokens
+### 8.6 On-Artwork & Borderless Surface Tokens
+
+Chrome that sits on game artwork is **solid, not glass**. A translucent pill washes
+out over bright artwork and its fill shifts with whatever happens to be behind it;
+a filled chip with a hairline and a little elevation reads deliberately at any
+brightness. Borderless card interiors use faint washes so sections are defined by
+space rather than rules.
+
+Glass (`backdrop-filter`) remains correct for chrome over *scrolling content* — the
+sticky top bar, toasts, modal backdrops — but not for chrome over artwork.
+
+| Token | Value | Visual Purpose |
+|---|---|---|
+| `--on-art-solid` | `#151a26` | Filled surface for pills and buttons over artwork. |
+| `--on-art-solid-hover` | `#1f2637` | Hover state for on-artwork controls. |
+| `--on-art-line` | `rgba(255, 255, 255, 0.10)` | Hairline edge for on-artwork surfaces. |
+| `--on-art-line-strong` | `rgba(255, 255, 255, 0.20)` | Hover/active edge for on-artwork surfaces. |
+| `--on-art-shadow` | `0 2px 8px rgba(0, 0, 0, 0.40)` | Subtle elevation lifting chrome off the art. |
+| `--pill-neutral-bg` / `-line` | `#151a26` / `rgba(255,255,255,.11)` | Launcher badge: neutral dark. |
+| `--pill-accent-bg` / `-text` / `-line` | `#241d47` / `#bbabff` / `rgba(124,92,255,.42)` | Genre badges: brand accent. |
+| `--pill-gold-bg` / `-text` / `-line` | `#2d2411` / `#f5d67a` / `rgba(250,204,21,.38)` | Progress badge, favourite state: amber. |
+| `--on-art` | `#ffffff` | Titles and control labels over artwork. |
+| `--on-art-strong` | `rgba(255, 255, 255, 0.92)` | Primary on-artwork text. |
+| `--on-art-muted` | `rgba(255, 255, 255, 0.76)` | Description copy over artwork. |
+| `--on-art-faint` | `rgba(255, 255, 255, 0.64)` | Metadata labels over artwork; the contrast floor for on-artwork text. |
+| `--surface-1` | `rgba(255, 255, 255, 0.03)` | Borderless row/tile wash inside cards. |
+| `--surface-2` | `rgba(255, 255, 255, 0.05)` | Hover wash and icon marks inside cards. |
+| `--surface-line` | `rgba(255, 255, 255, 0.07)` | Hairline divider, progress track, quiet pill edge. |
+| `--card-border` | `rgba(255, 255, 255, 0.05)` | Premium card hairline border. |
+| `--card-border-hover` | `rgba(255, 255, 255, 0.09)` | Premium card hover border. |
+
+### 8.7 Platform Identity Tokens
 
 | Platform Source | Indicator Color | Tone Label |
 |---|---|---|
@@ -161,6 +192,10 @@ NOVARA structures visual depth through a dark, multi-layered surface stack. Dept
 | **Battle.net** | `#7ea6ff` | Battle.net Blue |
 | **Emulators** | `#4adecb` | Emulator Teal |
 | **Manual / Custom**| `#5c6479` | Slate Neutral |
+
+The tone drives either a 6px dot or, where the badge leads with a launcher mark
+(§14.1, §21.6), the mark's own colour — never both, so adding branding never adds
+weight.
 
 ---
 
@@ -177,9 +212,10 @@ NOVARA uses a clean typography hierarchy engineered for high legibility, crisp s
 
 | Style Role | Font Size | Weight | Line Height | Letter Spacing | Case | Target Usage |
 |---|---|---|---|---|---|---|
-| **Hero Title** | 40px | 800 (ExtraBold) | 1.06 | -1.0px | Sentence | Hero banner main game titles |
-| **Game Details Title**| 30px | 800 (ExtraBold) | 1.15 | -0.6px | Sentence | Main title on game details page |
+| **Game Details Hero** | `clamp(38px, 4.4vw, 68px)` | 800 (ExtraBold) | 1.02 | -0.03em | Sentence | Game Details hero title; logo preferred when available (§21.4) |
+| **Hero Title** | 40px | 800 (ExtraBold) | 1.06 | -1.0px | Sentence | Dashboard hero banner game titles |
 | **Page Title** | 24px | 800 (ExtraBold) | 1.20 | -0.5px | Sentence | Top-level view section headers |
+| **Display Metric** | 34px | 800 (ExtraBold) | 1.00 | -0.03em | Numeric | Completion and achievement percentages on Game Details |
 | **Section Heading**| 20px / 16px | 700 / 650 | 1.30 | -0.2px | Sentence | Modal headers, sub-section titles |
 | **Subheader / Brand**| 15px / 15.5px | 600 / 700 | 1.35 | -0.2px | Sentence | Topbar title, sidebar brand mark |
 | **Body Standard** | 14px | 400 (Regular) | 1.55 | 0.0px | Sentence | Paragraph copy, user notes, general text |
@@ -204,8 +240,15 @@ All component dimensions, margins, and padding operate on an **8px grid** with a
  20px   [ 2.5x ]  Game grid spacing (20px gap), artwork slot gaps
  24px   [ 3.0x ]  Main content margins, page section gaps, toast offsets
  32px   [ 4.0x ]  Main view horizontal padding, hero banner bottom margin
- 40px   [ 5.0x ]  Hero banner internal content padding
+ 40px   [ 5.0x ]  Hero banner internal content padding, tab strip bottom margin, Game Details hero bottom margin, description-to-metadata separation
+ 48px   [ 6.0x ]  Large compositional separation
+ 64px   [ 8.0x ]  Game Details hero top reserve
 ```
+
+The scale is exposed as `--space-1` … `--space-8`. The main view's gutter is
+also tokenised (`--content-pad-x`, `--content-pad-y`) so a full-bleed element
+can cancel it exactly rather than guessing — this is how the Game Details hero
+reaches both window edges (§21.2).
 
 ---
 
@@ -213,11 +256,13 @@ All component dimensions, margins, and padding operate on an **8px grid** with a
 
 Consistent corner rounding establishes visual relationships across component scales:
 
-- `--radius-sm` (`8px`): Form inputs, standard buttons, keycaps, artwork preview slots.
-- `--radius-md` (`12px`): Game cards, navigation items, list containers, stat cards, toast popups.
-- `--radius-lg` (`16px`): Main content panels, game detail covers, modal popups.
+- `--radius-sm` (`8px`): Form inputs, standard buttons, keycaps.
+- `--radius-md` (`12px`): Game cards, navigation items, list containers, stat cards, toast popups, Game Details hero action controls.
+- `--radius-lg` (`16px`): Main content panels, modal popups, artwork preview frames.
+- `--radius-2xl` (`20px`): Game Details panel cards.
 - `--radius-xl` (`22px`): Dashboard hero banners, featured artwork frames.
-- **Pill / Circular (`999px` / `50%`):** Platform badges, search inputs, segmented filter tabs, quick action overlay buttons.
+- **Fluid (`clamp(12px, 1.1vw, 18px)`):** Game Details hero cover, which scales with the poster.
+- **Pill / Circular (`999px` / `50%`):** Platform badges, search inputs, segmented filter tabs, quick action overlay buttons, hero badges, completion state pills.
 
 ---
 
@@ -234,6 +279,7 @@ Elevation communicates interactive readiness and surface hierarchy without visua
 1. **Layer 1 Elevation (Panels & Lists):** `--shadow-1` combined with top-edge specular highlight (`--inner-light`). Provides static depth to flat surfaces.
 2. **Layer 2 Elevation (Hovered Cards & Modals):** `--shadow-pop`. Combines drop shadow with a soft violet accent micro-glow.
 3. **Layer 3 Elevation (Primary Action Aura):** `--accent-glow`. Reserved for primary CTA buttons, active switch toggles, and logotype branding.
+4. **Composed Surfaces (Game Details):** Elevation is quieter where artwork leads. Panel cards use the specular top edge with a soft, wide drop shadow; the hero cover uses a wide shadow plus a specular hairline instead of a border; and the hero Play button uses a contained violet elevation rather than `--accent-glow`, so it reads as set into the page rather than lit up.
 
 ---
 
@@ -261,8 +307,23 @@ All components MUST respect the user's OS reduced-motion preference by disabling
 NOVARA uses an inline, dependency-free stroke icon system based on modern 24×24 geometry.
 
 - **Stroke Characteristics:** 2px stroke width, open end caps, rounded joins, fill set to `none`.
-- **Standard Scale:** 14px (inline action text), 16px (navigation, stat pills), 20px (action buttons), 24px–32px (empty state headers).
+- **Standard Scale:** 13px (source badge marks), 14px (inline action text), 16px (navigation, stat pills), 20px (action buttons), 24px–32px (empty state headers).
 - **Color Inheritance:** Icons inherit `currentColor` by default, adopting `--accent-bright`, `--success`, `--warning`, or `--danger` during active or status states.
+
+### 14.1 Launcher & Source Marks
+Each store has a mark (`src-steam`, `src-epic`, `src-gog`, `src-xbox`,
+`src-ubisoft`, `src-battle`, `src-manual`, plus `gamepad` for emulators) used by
+the source badge (§21.6) and tinted with that platform's tone (§8.7).
+
+- **Simplified, Not Reproduced:** These are NOVARA's own geometric marks, drawn
+  to *identify* a store at a glance rather than to reproduce its trademark. They
+  share the 24×24 grid, 2px stroke and optical weight of every other icon, so a
+  badge row of mixed sources reads evenly.
+- **Local Only:** Drawn inline like the rest of the set — no icon font, no vendor
+  logo files, nothing to fetch and nothing to miss offline (§28).
+- **Graceful Fallback:** An unrecognised source code falls back to the generic
+  `src-manual` mark and the neutral slate tone, so a future store renders
+  correctly before it has a mark of its own.
 
 ---
 
@@ -288,7 +349,8 @@ NOVARA uses an inline, dependency-free stroke icon system based on modern 24×24
 - **Small Sizing:** Compact 28px height, 12px font size; used for inline controls and tight toolbar actions.
 - **Standard Sizing:** Standard 36px height, 13px font size; used for general interface actions.
 - **Large Sizing:** Prominent 44px height, 14px font size, medium corner radius; used for primary view CTAs like "Play Now".
-- **Icon Action Buttons:** Square or circular 36×36px bounds designed specifically for single-icon controls.
+- **Hero Action Sizing:** 44px height (`--gd-control-h`), 13.5px font size, `--radius-md`, glass fill over artwork. Every control in the Game Details hero action row — including icon-only ones — shares this single height (§21.8).
+- **Icon Action Buttons:** Square or circular 36×36px bounds designed specifically for single-icon controls (44×44px in the Game Details hero, to match the row).
 
 ---
 
@@ -325,6 +387,13 @@ NOVARA uses an inline, dependency-free stroke icon system based on modern 24×24
 ### 17.2 Stat Cards
 - Grid layout adapting to container width.
 - Houses 42×42px icon box with distinct color washes (violet, cyan, green, gold), uppercase stat label, and bold numeric value (`font-feature-settings: "tnum"`).
+- **Scope:** A Dashboard and Analytics pattern. Deliberately not used on Game Details, where figures integrate into the hero composition as metadata rows instead (§21.7, §21.9).
+
+### 17.3 Premium Panel Cards
+- Used by Game Details below the hero: `--radius-2xl`, single hairline border (`--card-border`), specular top edge plus soft drop shadow, and generous internal padding (`clamp(20px, 2vw, 28px)`).
+- Card headings are quiet: 14px SemiBold in `--text-primary`, with no icon and no accent colour, so the card's content leads.
+- The card's primary affordance is a 34px outlined secondary button (transparent fill, `--border-strong` hairline, `--radius-md`), not a text link — a card action should look pressable. Text-button styling is reserved for affordances *inside* rows.
+- Interiors are borderless. Row groups use `--surface-1` washes and 8px-grid gaps rather than dividers.
 
 ---
 
@@ -361,17 +430,265 @@ The library view organizes game collections cleanly:
 
 ## 21. Game Details Page Experience
 
-The Game Details page offers a rich visual layout for individual titles:
+Game Details is NOVARA's flagship page and its most artwork-led surface. It is
+composed, not stacked: a single continuous hero owns the first viewport and
+carries the entire identity of the game, and the page only becomes conventional
+UI below the fold. `GAME_DETAILS_REDESIGN.md` is the implementation
+specification for this page; this section records the resulting design so the
+two documents agree.
 
-- **Hero Banner Area:** Cinematic horizontal banner aspect ratio (`21 / 9`), overlaid with dark bottom gradient scrim for title readability.
-- **Overlapping Cover Art:** Vertical cover (`2 / 3` ratio) overlaps the hero banner bottom edge smoothly to create visual depth.
-- **Title Block & Primary CTAs:** Clear typographic hierarchy displaying large game title (30px ExtraBold), platform badge, completion status control, and primary Play CTA button.
-- **Completion Status Control:** A segmented tab group, not a dropdown. The
-  five completion states are a small, fixed, mutually exclusive set, so
-  surfacing them inline makes the current state readable at a glance and
-  reachable in one click. This also reuses the segmented-control treatment
-  already specified for Layer 3 elevation (§8) and the library filter strip
-  (§20), keeping one visual language for "pick one of a few".
+### 21.1 Composition Order
+Visual weight descends in a fixed order, and each level leads into the next:
+hero artwork → cover → title/logo → platform & genre → description →
+metadata → primary actions → tabs → remaining content. Nothing competes with
+the artwork, and nothing competes with the title.
+
+### 21.2 Hero
+- **Full-Bleed Canvas:** The hero cancels the main view's gutter to meet the
+  top bar and both window edges. It carries no border and no corner radius.
+- **Artwork Fits the Width, Never the Box:** Hero art is anchored to the top and
+  scaled to the hero's *width*, taking its height from the source's own ratio.
+  It is therefore **never cropped horizontally** — the full width of the key art
+  is always visible, at any hero height. `object-fit: cover` was the previous
+  behaviour and is explicitly rejected here: filling a box taller than the source
+  meant scaling up and discarding a third of the image from the sides, which cut
+  the composition the artist framed. Only a source *taller* than the hero is
+  clipped, and then from the bottom, under the fade.
+- **The Artwork Dissolves at Its Own Edge:** A gradient on the artwork element
+  itself fades it to exactly `--bg-0` by its bottom edge, wherever the source's
+  ratio puts that edge. The join with the page is therefore seamless by
+  construction rather than by a percentage tuned for one aspect ratio.
+- **Height Is Free of the Artwork:** Because the crop is width-driven, hero
+  height no longer trades against artwork. It only decides how much of the
+  composition sits on artwork versus on the fade beneath it. Set to `76vh` with a
+  `560px` floor and a `52vw` ceiling — cinematic, but with the tab strip still
+  inside the fold.
+- **Composition Straddles the Two:** At 1080p the artwork occupies the top ~67%
+  of the hero and the composition begins at ~40% down, so the logo, badges and
+  the first lines of the description sit over real artwork and the metadata and
+  actions descend into the fade. That overlap is what makes the hero read as one
+  composition rather than a banner with a caption below it.
+- **Readability Scrim, Not a Cover:** Since the artwork carries its own fade, the
+  scrim is only what the text needs: a narrow wash behind the identity column
+  clearing by two thirds of the width, a soft lift near the bottom, and a whisper
+  of top shade for the back control. No blur anywhere (§6.1.1).
+- **Nothing Overlaps the Boundary:** Every element of the composition lives
+  inside the hero. There is no element straddling its lower edge.
+
+### 21.3 Cover Artwork
+Vertical cover (`2 / 3`) placed *inside* the hero, bottom-aligned with the text
+column rather than with the action row — which lifts it higher in the frame and
+lets the action row span beneath it (§21.4). Width is fluid (`--gd-cover-w`,
+`clamp(176px, 15vw, 264px)`) and it remains a primary anchor — never reduced to
+make room for text. Elevation comes from a wide soft shadow plus a top-edge
+specular hairline — no border — so the poster reads as physically attached to the
+artwork. The gap to the identity column (`clamp(28px, 3vw, 44px)`) is deliberately
+generous: the logo must not read as glued to the poster's edge.
+
+### 21.4 Left-Weighted Composition
+Cover, logo, badges, description, metadata and actions form **one block**, not
+six sections, and the page must feel compositionally balanced rather than
+mathematically centred. The block has two stacked parts: a row holding the poster
+and the text, and the action row spanning beneath both. Three rules hold it
+together:
+- A tight left gutter (`--gd-hero-pad-x`, `clamp(20px, 2.6vw, 44px)`) weights the
+  block to the left edge instead of floating it in negative space.
+- A bounded width (`min(1180px, 86%)`) stops the block short of the hero's right
+  edge, leaving an open field of artwork there, released below `1500px` where a
+  narrow hero has no open field to protect.
+- The poster and the text column are bottom-aligned to each other, and the action
+  row is their **sibling** rather than a child of the text column. That is what
+  puts the row under the poster instead of indented past it, closes the dead space
+  that used to sit beneath the cover, and lifts the poster higher in the frame.
+
+The eye travels cover → logo → badges → description → metadata → Play in a
+single unbroken descent.
+
+### 21.5 Logo & Title
+The game logo is **preferred** whenever one is available; the text title is the
+fallback. When the logo renders, the `<h1>` remains in the document and is
+hidden visually only, preserving the document outline and screen-reader
+announcement. A logo that fails to decode falls back to the text title. The
+title is the largest type in the application (§9.2) and is never compressed.
+
+### 21.6 Badges
+The badge row is **source → genre → genre → completion %**, and nothing else.
+
+- **Source Badge First:** The first badge names where the game lives and leads
+  with that store's mark (§14.1), tinted with its platform tone (§8.7). It is
+  the fastest answer to "which launcher owns this?" and earns first position.
+- **Every Badge Earns Its Place:** Release year and completion state are
+  deliberately *not* badges — the release date is an About row (§21.13) and the
+  completion state is not on this page at all (§21.14). A badge must answer a
+  question no neighbouring element already answers.
+- **Compact Values:** Completion reads `42%`, not `42% complete`. The unit is
+  self-evident; the extra word only adds width.
+- **Exception for Warnings:** Library-integrity states (§23.4) may repeat
+  information found in the Installations panel, because a broken install is a
+  warning rather than a restatement, and it appears only when something is wrong.
+
+Badges are **solid** chips (§8.6), 32px tall with 14px of side padding — sized so a
+launcher mark has room to be recognisable, which is what turns the source badge
+from a tag into an identity badge. Colour carries the hierarchy:
+
+| Badge | Treatment |
+|---|---|
+| Launcher | Neutral dark (`--pill-neutral-*`), with the store's 15px mark in its own platform tone (§8.7) |
+| Genre | Brand accent (`--pill-accent-*`) |
+| Completion % | Amber (`--pill-gold-*`), the same language earned achievement tiles speak |
+| Integrity warning | Opaque danger or slate, per §23.4 |
+
+They support the title; they never compete with it.
+
+### 21.7 Description
+Directly beneath the badges: muted, comfortable line height, clamped to three
+lines (two on narrow widths) and truncated gracefully. Width is a *measure*
+(`min(68ch, 100%)`), not the container — the paragraph ends on a comfortable line
+length rather than running to the block's edge. A step and a half of separation
+follows it, so the metadata reads as its own layer of information rather than a
+fourth line of prose; whitespace does that work, not a rule.
+
+### 21.8 Metadata
+Developer, publisher, release date, last played and playtime render as label-
+over-value metadata rows separated by whitespace alone — no borders, no icons,
+no single-value cards. Rows with no data are omitted rather than shown as
+"Unknown"; a game that has never been launched reads `Never` rather than
+disappearing.
+
+### 21.9 Actions
+One row, one height (`--gd-control-h`, `44px`), spanning the **full composition
+width** from the poster's left edge — not indented into the text column, which
+left dead space beneath the cover.
+
+**Three groups, one ratio.** The bar reads as `[Play] · [Favorite Achievements
+Saves Mods] · [Refresh Remove]`, and that grouping is structural (`.gd-action-group`)
+rather than hand-spaced: **24px between groups, 8px within them**, both off the
+8px scale. The 3:1 ratio is what makes the grouping legible; no gap in the row is
+set by hand.
+
+**One component family.** Every control in the row — including Play and the two
+icon-only utilities — carries the same base class, so height, corner radius, border
+weight, type size, icon size (16px), icon-to-label gap and vertical alignment come
+from a single rule. The utility pair is square (44×44), identically bordered, and
+sits at the group's internal 8px spacing so Refresh and Remove read as one
+connected control.
+
+**Play earns attention without bulk.** It is the same height, radius, type size and
+icon size as its neighbours; only the gradient, its own group and the whitespace
+around it distinguish it. It carries no `min-width` and no larger type — deliberately,
+so that at 50% zoom the eye lands on one saturated element while the remaining six
+read as a single cohesive secondary group.
+
+**Padding is uniform.** All labelled buttons share `--gd-btn-pad`, so they have equal
+visual density despite different label lengths; Play takes 6px more per side for
+presence. The token steps 18 → 15 → 12 → 10px as width tightens, so the row sheds
+padding before it is ever allowed to wrap.
+
+Refresh Metadata and Remove are icon-only with accessible names. Remove governs
+library membership — it never deletes game files — and its copy says so.
+
+### 21.10 Statistics
+This page has no dashboard widgets. Figures integrate into the composition
+instead: playtime and last-played as hero metadata, completion as a hero badge
+with the state read-only here (§21.14), achievement progress as the
+Achievements card's headline metric. Stat cards (§17.2) are a Dashboard and
+Analytics pattern and are deliberately absent here.
+
+### 21.11 Tabs
+Overview, Achievements, Artwork, Saves, Mods, Activity. Visually lightweight:
+no container, no count pills, a hairline `1.5px` accent underline that scales in
+on the active tab. Roving focus with `ArrowLeft` / `ArrowRight` / `Home` / `End`,
+`role="tablist"` semantics, and panels that cross-fade. The strip carries the
+section nav and nothing else.
+
+### 21.12 Overview & Cards
+Four cards in a two-column grid, balanced by weight rather than by category:
+
+```
+Achievements  |  About
+Notes         |  Installations
+```
+
+Cards use `--radius-2xl`, a single hairline border (`--card-border`), and soft
+elevation; whitespace defines sections, not heavy outlines. Row groups inside
+cards (installations, sessions, save profiles) are separated by surface wash and
+space rather than dividers. Each card's primary affordance is an **outlined
+button** (`.gd-btn-outline`), never a text link — a card action should look like
+something you press.
+
+**One purpose per card, strictly.** A card must not mix what the game reports with
+what the user assigns. The Achievements card contains achievement data and nothing
+else; the completion state it once shared space with is library management and
+lives on the tab strip (§21.14). No two cards may communicate the same information
+either.
+
+**Achievements card structure**, in this exact order and containing nothing else:
+1. Header: `Achievements`, with a `View All` outlined button at the
+   upper right (disabled while there is nothing to view). The card title already
+   says Achievements, so the button does not repeat it.
+2. Headline metric: the percentage, followed by the word `Complete`.
+3. Progress bar, on a real surface track (`--bg-3`) so the remaining distance
+   reads as distance rather than as nothing.
+4. Count line beneath the bar: `12 / 51 unlocked`.
+5. Strip of achievement tiles: capped at eight, with a `+N` tile for the
+   remainder.
+
+**Tiles are collectibles, not absences.** Locked is the normal state of this strip
+— most games are mostly unearned — so a locked tile must read as something waiting
+to be claimed: a full surface step above the card (`--bg-2`), a real 1px border,
+`--radius-md` corners, a legible `--text-secondary` lock at 18px, even spacing, and
+a soft hover that lifts and brightens. Earned tiles are the one place on this page
+gold is spent. A washed-out placeholder variant is explicitly rejected — it made
+the shelf look broken rather than unearned.
+
+**The card looks finished before the data exists.** With no achievements recorded
+it shows `0%`, an empty bar, `0 / 0 unlocked` and a full shelf of locked tiles —
+which is what an unplayed game looks like anyway. There is **no empty-state
+message** in the Overview card, and **never an invented total**: `0 / 0` is true,
+whereas `0 / 51` would be indistinguishable from real data to someone reading
+their own library.
+
+**Transition from the hero:** deliberately tight. The hero's bottom margin
+(`--space-3`) and the tab strip's (`--space-4`) are the smallest gaps on the page,
+so the tab strip reads as a divider between two parts of one page and the first
+cards feel connected to the artwork above rather than floating below it.
+
+### 21.13 About
+Six short rows, readable in two or three seconds. Not a database dump — the target
+is *scannable*, so values are marks and short labels rather than prose.
+
+| Row | Form |
+|---|---|
+| Release date | Text. Deliberately **not** a hero badge; this is where it belongs. |
+| Platform | OS marks — Windows, macOS, Linux, plus Steam Deck when reported. Text only if no mark exists for the value. |
+| Genre | Up to three tags. Long genre lists are noise. |
+| Features | Curated chips with marks: Single Player, Co-op, Multiplayer, Achievements, Cloud Saves — capped at four. |
+| Languages | Three tags plus a `+N more` disclosure. |
+| Controller | A gamepad mark plus `Full` / `Partial Controller Support`, normalised from the provider's own casing. |
+
+- **Curated, not mirrored.** Steam ships twenty-odd categories per game, most of
+  them plumbing (`Remote Play on Phone`, `Family Sharing`, `Stats`). Features shows
+  only what a player cares about: how many people can play, and whether progress is
+  tracked. The match table lives with the component so the rule is auditable.
+- **Not shown:** the metadata provider's name (an implementation detail) and the
+  engine (never populated by NOVARA's providers, so a permanently empty row).
+- **No duplication:** developer and publisher live in the hero metadata (§21.8).
+- **Full data retained.** `parseGameFacts` still extracts everything; only the
+  display is edited, so nothing is lost when a row is trimmed or capped.
+- **Empty state:** if no facts are available at all, a single sentence explains how
+  to get them rather than leaving a blank card.
+
+### 21.14 Library Status
+The five completion states (Playing, Backlog, Completed, Abandoned, Unplayed) are
+**absent from Game Details**. This page is about the game; where a
+library-management control belongs globally is a separate decision, so it is not
+relocated into a card, a tab strip or a status bar here.
+
+Consequence, recorded deliberately: `set_completion` currently has no caller in the
+UI, so the state is read-only for the user. It still changes on its own — the
+backend derives `playing` when a session ends — and it is still read by the Library
+filter strip, game cards, the Dashboard and the Dashboard hero. The command, its
+IPC wrapper and the data are untouched and ready for whatever surface is chosen.
 
 ---
 
@@ -389,8 +706,13 @@ The Game Details page offers a rich visual layout for individual titles:
 ### 23.1 Empty View States
 Centered layout featuring a glowing 64px or 76px icon container, headline text (16–20px), descriptive muted subtext (13px), and clear action CTA buttons (e.g., "Scan Launchers", "Add Game Manually").
 
+**Scope:** This is a *view*-level pattern. Inside a card — notably the Game
+Details panels — an empty state is a single muted sentence explaining what will
+appear and how to get it, because a full illustration block reads as a hole in
+the layout.
+
 ### 23.2 Skeleton Loading States
-Content loading states present styled background cards with linear shimmer animations sweeping across headline and media blocks.
+Content loading states present styled background cards with linear shimmer animations sweeping across headline and media blocks. Where a page is dominated by one composition, the skeleton instead occupies that composition's exact footprint (the Game Details hero) so arrival causes no layout shift.
 
 ### 23.3 Notification Toasts
 - Positioned floating at bottom-right viewport margin (`bottom: 24px`, `right: 24px`).
@@ -427,6 +749,7 @@ Content loading states present styled background cards with linear shimmer anima
 - **Sidebar Rail Scaling:** Maintains fixed width (`216px`) on standard displays, adapting to a compact rail (`64px`) on narrow window widths below 900px.
 - **Game Grid Adaptation:** Fluid grid column recalculation maintaining card aspect ratios automatically.
 - **Hero Frame Resizing:** Fluid hero frame height adapting proportionally with window width bounds.
+- **Game Details Hero Adaptation:** The hero stays dominant at every size. Height, cover width and hero padding are driven by tokens overridden at breakpoints (narrow ≤1000px, short ≤720px) rather than by per-rule media queries, so all dependent geometry moves together. Below 820px the cover and identity stack vertically and the description clamps to two lines. Buttons wrap only when the row genuinely cannot fit.
 
 ---
 
@@ -441,8 +764,10 @@ Content loading states present styled background cards with linear shimmer anima
 ## 28. Anti-Patterns & Practices to Avoid
 
 - **DO NOT mix conflicting visual identities:** Avoid loud, noisy neon aesthetics. Keep luminous violet/cyan accents focused on visual focal points.
-- **DO NOT hardcode ad-hoc CSS colors or spacing values:** Rely strictly on established design tokens.
-- **DO NOT break standard media aspect ratios:** Always preserve standard vertical cover (`2 / 3`) and hero banner (`21 / 9`) proportions.
+- **DO NOT hardcode ad-hoc CSS colors or spacing values:** Rely strictly on established design tokens. Chrome placed over artwork uses the on-artwork token set (§8.6), not raw rgba values.
+- **DO NOT distort standard media aspect ratios:** Vertical covers are always `2 / 3` and hero artwork keeps its source ratio; media must never be stretched to fit. Where a container is taller than the source, fit the artwork to the container's *width* and fade its lower edge rather than scaling up and cropping the sides — a horizontal crop discards the composition the artist framed (§21.2).
+- **DO NOT turn single values into dashboard widgets on artwork-led pages:** Integrate figures into the composition as metadata or badges instead (§21.7, §21.9).
+- **DO NOT let interface chrome outrank the artwork on Game Details:** Nothing may compete with the hero artwork, the title, or the Play action, in that order (§21.1).
 - **DO NOT use external icon fonts:** Use inline SVG primitives to preserve offline resilience.
 - **DO NOT use browser-default focus outlines or plain red/blue controls.**
 
