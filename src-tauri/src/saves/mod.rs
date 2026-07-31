@@ -21,6 +21,25 @@
 //! nothing below `vault` and `locator` for a command to skip past. Revisit at the
 //! start of Phase 1.
 
+pub mod backoff;
+pub mod bounds;
+pub mod evidence;
 pub mod fs;
+pub mod ignore;
+pub mod kb;
 pub mod locator;
+pub mod pipeline;
+pub mod resolver;
+pub mod service;
 pub mod vault;
+pub mod verifier;
+
+/// The declarative test-fixture format and its runner. Test-only: no production
+/// code path reads a scenario.
+#[cfg(test)]
+pub mod scenario;
+
+/// Validation against the developer's own installed library. Test-only, and ignored by
+/// default — see the module docs for why it is not part of the normal suite.
+#[cfg(test)]
+mod real_library_tests;

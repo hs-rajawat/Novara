@@ -1,0 +1,34 @@
+version = 1
+
+[scenario]
+id = "screenshots-in-a-game-folder"
+title = "A folder named after the game but full of screenshots is not a save folder"
+tags = ["negative", "false-positive", "content-shape"]
+
+# Replaces the pressure that `photos-name-collision.toml` used to carry. That case
+# turned out to be solvable by name alone — `Photos` is on the user-content ignore
+# list — so it no longer proves anything about content inspection.
+#
+# This one cannot be solved by name. The folder is called exactly what the game is
+# called, it sits on a legitimate root, and no ignore list can reasonably contain it.
+# The only thing distinguishing it from a real save folder is what is inside: large
+# sequentially-numbered JPEGs, which are screenshots, not saves.
+#
+# Passing since task 1.17. The verifier rejects it as a media folder: no save-like
+# extensions at all, and images over the dominance ratio. Note the guard that keeps
+# this safe — a folder holding screenshots *alongside* saves retains its save-like
+# evidence and is not rejected.
+[game]
+title = "Riverbound"
+
+[[fs]]
+path = "{DOCUMENTS}/Riverbound"
+files = [
+  { name = "Riverbound_2026-01-04_19-22-31.jpg", size = 4100000 },
+  { name = "Riverbound_2026-01-04_19-23-02.jpg", size = 3980000 },
+  { name = "Riverbound_2026-01-05_20-11-49.jpg", size = 4250000 },
+  { name = "Riverbound_2026-01-06_21-02-17.jpg", size = 3870000 },
+]
+
+[expect]
+must_not_include = ["{DOCUMENTS}/Riverbound"]

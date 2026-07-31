@@ -1,0 +1,32 @@
+version = 1
+
+[scenario]
+id = "elden-ring-two-roots-ordering"
+title = "Elden Ring matches in two roots; the order is deterministic"
+tags = ["steam", "alias", "ordering", "multi-root"]
+
+# Two real directories match: an exact-name folder in AppData/Roaming and a
+# compacted-name folder in Saved Games.
+#
+# This fixture originally asserted that "the stronger alias leads", ordering by alias
+# strength. That premise is obsolete twice over. Task 1.14 made spacing normalisation
+# noise rather than uncertainty, so `EldenRing` is as good a match as `Elden Ring`; and
+# task 1.20 moved ordering onto the decision score, which is a sum of evidence weights.
+#
+# The two candidates now carry identical evidence and therefore tie, so the order comes
+# from the path tiebreak. That is still exactly what this fixture is for: proving the
+# result never depends on which root the filesystem happened to enumerate first.
+[game]
+title = "Elden Ring"
+steam_appid = "1245620"
+
+[[fs]]
+path = "{APPDATA}/Elden Ring"
+files = [{ name = "ER0000.sl2", size = 2800000 }]
+
+[[fs]]
+path = "{SAVEDGAMES}/EldenRing"
+files = [{ name = "ER0000.sl2", size = 2800000 }]
+
+[expect]
+suggested = ["{APPDATA}/Elden Ring", "{SAVEDGAMES}/EldenRing"]

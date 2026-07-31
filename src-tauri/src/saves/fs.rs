@@ -22,6 +22,58 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+/// A named directory a KB path template can anchor on.
+///
+/// Overlaps [`RootKind`] but is not the same concept, and the difference is worth
+/// keeping: a *root* is somewhere detection searches, an *anchor* is somewhere a
+/// template can start from. `{USERPROFILE}` and `{PUBLIC}` are legitimate anchors
+/// that would be terrible search roots — walking a whole user profile is the
+/// disk-crawl this design exists to avoid.
+///
+/// [`RootKind::anchor`] maps one way only, so the six shared values cannot drift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Anchor {
+    AppDataRoaming,
+    AppDataLocalLow,
+    AppDataLocal,
+    Documents,
+    MyGames,
+    SavedGames,
+    UserProfile,
+    Public,
+}
+
+impl Anchor {
+    /// The template variable that names this anchor, without braces.
+    pub fn variable(&self) -> &'static str {
+        match self {
+            Anchor::AppDataRoaming => "APPDATA",
+            Anchor::AppDataLocalLow => "LOCALLOW",
+            Anchor::AppDataLocal => "LOCALAPPDATA",
+            Anchor::Documents => "DOCUMENTS",
+            Anchor::MyGames => "MYGAMES",
+            Anchor::SavedGames => "SAVEDGAMES",
+            Anchor::UserProfile => "USERPROFILE",
+            Anchor::Public => "PUBLIC",
+        }
+    }
+
+    /// Every anchor, longest variable name first.
+    ///
+    /// The ordering matters for substitution: `LOCALAPPDATA` must be matched before
+    /// `APPDATA`, or the shorter name would rewrite the middle of the longer one.
+    pub const ALL_LONGEST_FIRST: [Anchor; 8] = [
+        Anchor::AppDataLocalLow,  // LOCALLOW
+        Anchor::AppDataLocal,     // LOCALAPPDATA
+        Anchor::SavedGames,       // SAVEDGAMES
+        Anchor::UserProfile,      // USERPROFILE
+        Anchor::AppDataRoaming,   // APPDATA
+        Anchor::Documents,        // DOCUMENTS
+        Anchor::MyGames,          // MYGAMES
+        Anchor::Public,           // PUBLIC
+    ];
+}
+
 /// A directory NOVARA searches for save folders.
 ///
 /// Named rather than a bare path so the label that reaches the UI is derived from
@@ -35,6 +87,13 @@ pub enum RootKind {
     DocumentsMyGames,
     Documents,
     SavedGames,
+    /// The game's own installation directory (ADR-0004).
+    ///
+    /// Unlike every other root this is **per-game**, so it never comes from
+    /// [`FileSystem::roots`] — the locator synthesises it from the game context.
+    /// It is also the first root that is *not* a template anchor, which is why
+    /// [`RootKind::anchor`] is partial.
+    InstallDir,
 }
 
 impl RootKind {
@@ -50,8 +109,61 @@ impl RootKind {
             RootKind::DocumentsMyGames => "Documents/My Games",
             RootKind::Documents => "Documents",
             RootKind::SavedGames => "Saved Games",
+            RootKind::InstallDir => "Install directory",
         }
     }
+
+    /// The template anchor this root corresponds to, if it is one.
+    ///
+    /// **Partial on purpose.** An anchor is a machine location a KB template can
+    /// start from; the install directory is a property of one game, so there is no
+    /// `{INSTALL}` anchor for a filesystem to resolve — `template::expand`
+    /// substitutes it from the game context instead. Returning `Option` keeps that
+    /// distinction in the type rather than forcing an invented variant.
+    pub fn anchor(&self) -> Option<Anchor> {
+        match self {
+            RootKind::AppDataRoaming => Some(Anchor::AppDataRoaming),
+            RootKind::AppDataLocalLow => Some(Anchor::AppDataLocalLow),
+            RootKind::AppDataLocal => Some(Anchor::AppDataLocal),
+            RootKind::DocumentsMyGames => Some(Anchor::MyGames),
+            RootKind::Documents => Some(Anchor::Documents),
+            RootKind::SavedGames => Some(Anchor::SavedGames),
+            RootKind::InstallDir => None,
+        }
+    }
+}
+
+/// Join `relative` onto `base`, refusing anything that could leave `base`.
+///
+/// The locator builds candidate paths from **game metadata** — titles, developer
+/// and publisher names — which is attacker-influenced data in exactly the way a KB
+/// template is. `Path::join` is unsafe for this: joining a string that happens to be
+/// absolute silently *replaces* the base, so a game titled `C:/Windows` would
+/// otherwise turn a search of `Documents` into a probe of the system directory.
+///
+/// Refuses rather than truncates, because a partially-applied path is a plausible
+/// wrong answer and those are worse than no answer.
+///
+/// This is the same guarantee [`crate::saves::kb::template`] enforces for KB
+/// templates, expressed for a different call shape. The two are kept honest by
+/// `locator::tests::both_path_guards_refuse_the_same_hostile_input`, which feeds
+/// identical hostile input to both and requires neither to escape.
+pub fn join_under(base: &Path, relative: &str) -> Option<PathBuf> {
+    let mut out = base.to_path_buf();
+    let mut pushed = 0usize;
+
+    for segment in relative.split(['/', '\\']).filter(|s| !s.is_empty()) {
+        // `..` climbs out; `.` is harmless but signals a caller that did not mean
+        // to build a plain relative name. A colon is a drive prefix (`C:`) or an
+        // NTFS alternate data stream, neither of which belongs in a folder name.
+        if segment == ".." || segment == "." || segment.contains(':') {
+            return None;
+        }
+        out.push(segment);
+        pushed += 1;
+    }
+
+    (pushed > 0).then_some(out)
 }
 
 /// A search root: where it is on this machine, and which well-known location it is.
@@ -87,6 +199,12 @@ pub struct FileMeta {
 pub trait FileSystem: Send + Sync {
     /// The well-known locations to search, in priority order.
     fn roots(&self) -> Vec<Root>;
+
+    /// Resolve a template anchor, or `None` if this machine has no such directory.
+    ///
+    /// Separate from [`Self::roots`] because not every anchor is somewhere we
+    /// search — see [`Anchor`].
+    fn anchor(&self, anchor: Anchor) -> Option<PathBuf>;
 
     /// Whether anything exists at `path`.
     fn exists(&self, path: &Path) -> bool;
@@ -164,6 +282,24 @@ impl FileSystem for RealFs {
         }
 
         roots
+    }
+
+    fn anchor(&self, anchor: Anchor) -> Option<PathBuf> {
+        match anchor {
+            Anchor::AppDataRoaming => dirs::config_dir(),
+            Anchor::AppDataLocal => dirs::data_local_dir(),
+            // LocalLow is the sibling of Local; there is no stdlib constant.
+            Anchor::AppDataLocalLow => dirs::data_local_dir()
+                .and_then(|p| p.parent().map(|parent| parent.join("LocalLow"))),
+            Anchor::Documents => dirs::document_dir(),
+            Anchor::MyGames => dirs::document_dir().map(|p| p.join("My Games")),
+            Anchor::SavedGames => dirs::home_dir().map(|p| p.join("Saved Games")),
+            Anchor::UserProfile => dirs::home_dir(),
+            // %PUBLIC% has no `dirs` accessor. Derived from the home directory's
+            // parent, which is where Windows places it.
+            Anchor::Public => dirs::home_dir()
+                .and_then(|p| p.parent().map(|parent| parent.join("Public"))),
+        }
     }
 
     fn exists(&self, path: &Path) -> bool {

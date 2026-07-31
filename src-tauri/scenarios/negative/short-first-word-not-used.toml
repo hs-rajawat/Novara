@@ -1,0 +1,21 @@
+version = 1
+
+[scenario]
+id = "short-first-word-not-used"
+title = "A four-letter first word is not distinctive enough to match on"
+tags = ["negative", "alias", "first-word"]
+
+# `Halo` is four characters, below the five-character distinctiveness floor in
+# `title_variants`. Without that floor, any game whose title starts with a short
+# common word would claim a same-named folder — `Dark`, `Star`, `Sky`, `War`.
+#
+# Passes today. Pins the floor so raising or removing it is a deliberate act.
+[game]
+title = "Halo Infinite"
+
+[[fs]]
+path = "{DOCUMENTS}/Halo"
+files = [{ name = "notes.txt", size = 200 }]
+
+[expect]
+must_not_include = ["{DOCUMENTS}/Halo"]

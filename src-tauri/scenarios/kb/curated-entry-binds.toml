@@ -1,0 +1,36 @@
+version = 1
+
+[scenario]
+id = "curated-entry-binds"
+title = "A curated knowledge-base entry for this game is bind-eligible"
+tags = ["kb", "decision-table"]
+
+# The `[[kb]]` block is live as of task 1.22: the runner holds a database, seeds these
+# entries through `Db::replace_kb_layer`, and `pipeline::detect` consults them.
+#
+# The folder is named nothing like the game, so name matching cannot find it. Only the
+# knowledge base can — which is what makes this fixture a test of the KB path rather
+# than of the locator.
+[game]
+title = "Some Obscure RPG"
+steam_appid = "424242"
+
+[[kb]]
+layer = "builtin"
+match_kind = "steam_appid"
+match_value = "424242"
+path_template = "{APPDATA}/ObscureStudios/SOR"
+note = "curated for this game"
+
+[[fs]]
+path = "{APPDATA}/ObscureStudios/SOR"
+files = [
+  { name = "profile.sav", size = 84000 },
+  { name = "settings.ini", size = 1100 },
+]
+
+[expect]
+# Decision table row 5: a curated built-in entry, and the path exists.
+bind_eligible = "{APPDATA}/ObscureStudios/SOR"
+rule = 5
+explanation_contains = "Known save location"

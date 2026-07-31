@@ -39,11 +39,22 @@ fn finds_an_exact_title_match_with_full_confidence() {
     assert_eq!(found[0].hint, "Documents/My Games/Skyrim Special Edition");
 }
 
+/// Case is **normalisation noise, not uncertainty.**
+///
+/// This asserted 0.92 before task 1.14, on the reasoning that an unusually-spelled
+/// folder is a less certain match. That conflated two different things: how unusual a
+/// spelling is, and how likely the folder is to be the wrong one. There is no world
+/// in which `hollow knight` is a different game from `Hollow Knight`, so the match is
+/// exact and scores 1.0. The old ladder was measuring the wrong quantity.
+///
+/// The confidences that remain below 1.0 are the ones that describe a genuine
+/// reduction in information — a stripped instalment number, a first word, an
+/// initialism.
 #[test]
-fn finds_a_lowercase_directory() {
+fn a_case_difference_is_still_an_exact_match() {
     let found = detect(&my_games_with(&["hollow knight"]), "Hollow Knight");
     assert_eq!(found.len(), 1);
-    assert_eq!(found[0].confidence, 0.92);
+    assert_eq!(found[0].confidence, 1.0);
 }
 
 #[test]
@@ -69,18 +80,23 @@ fn a_bare_numeral_title_is_not_stripped_to_nothing() {
     assert_eq!(found[0].confidence, 1.0);
 }
 
+/// Separators are normalisation noise too — see
+/// [`a_case_difference_is_still_an_exact_match`] for why this is 1.0 rather than the
+/// 0.72 it asserted before task 1.14.
 #[test]
-fn matches_underscores_for_spaces() {
+fn underscores_for_spaces_is_still_an_exact_match() {
     let found = detect(&my_games_with(&["Hollow_Knight"]), "Hollow Knight");
     assert_eq!(found.len(), 1);
-    assert_eq!(found[0].confidence, 0.72);
+    assert_eq!(found[0].confidence, 1.0);
 }
 
+/// Likewise a folder with the spaces removed: `HollowKnight` is not a less certain
+/// `Hollow Knight`, it is the same name written without spaces. Was 0.60.
 #[test]
-fn matches_a_compacted_title() {
+fn a_compacted_title_is_still_an_exact_match() {
     let found = detect(&my_games_with(&["HollowKnight"]), "Hollow Knight");
     assert_eq!(found.len(), 1);
-    assert_eq!(found[0].confidence, 0.60);
+    assert_eq!(found[0].confidence, 1.0);
 }
 
 #[test]
@@ -111,11 +127,20 @@ fn finds_nothing_when_no_directory_matches() {
 
 #[test]
 fn results_are_sorted_by_confidence_descending() {
-    // Both an exact and a compacted directory exist; the exact one must lead.
-    let found = detect(&my_games_with(&["Hollow Knight", "HollowKnight"]), "Hollow Knight");
+    // Two folders whose confidences genuinely differ: the full title is exact, the
+    // instalment-stripped form is a real reduction in information.
+    //
+    // This used to compare `Hollow Knight` against `HollowKnight`, which stopped
+    // being a difference in confidence once normalisation started treating spacing as
+    // noise — both score 1.0 now, so the test could no longer see an ordering.
+    let found = detect(
+        &my_games_with(&["The Witcher 3", "The Witcher"]),
+        "The Witcher 3",
+    );
     assert_eq!(found.len(), 2);
     assert_eq!(found[0].confidence, 1.0);
-    assert_eq!(found[1].confidence, 0.60);
+    assert!(found[0].path.ends_with("The Witcher 3"), "got {:?}", found[0].path);
+    assert_eq!(found[1].confidence, 0.75);
 }
 
 #[test]

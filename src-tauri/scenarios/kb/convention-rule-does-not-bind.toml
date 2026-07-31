@@ -1,0 +1,34 @@
+version = 1
+
+[scenario]
+id = "convention-rule-does-not-bind"
+title = "A convention rule suggests but never binds"
+tags = ["kb", "decision-table", "negative"]
+
+# The distinction task 1.19 had to introduce. A convention rule (`match_kind = "any"`)
+# matches EVERY game in the library — it describes a path shape, not this game. If it
+# counted as a curated claim, decision table row 5 would bind the first
+# conventional-looking folder that happened to exist.
+#
+# So the evidence records `keyed = false` and row 5 skips it. What is left is a low
+# suggestion, which is honest: a conventional location containing save files is worth
+# offering and not worth binding automatically.
+[game]
+title = "Wanderlight"
+
+[[kb]]
+layer = "builtin"
+match_kind = "any"
+path_template = "{MYGAMES}/{TITLE}"
+note = "Documents/My Games convention"
+
+[[fs]]
+path = "{MYGAMES}/Wanderlight"
+files = [
+  { name = "slot0.sav", size = 96000 },
+  { name = "slot1.sav", size = 94000 },
+]
+
+[expect]
+# Offered, but not bind-eligible: no `bind_eligible` key at all.
+suggested = ["{MYGAMES}/Wanderlight"]

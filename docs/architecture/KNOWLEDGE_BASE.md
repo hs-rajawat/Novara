@@ -163,6 +163,24 @@ Most specific to least:
 but ships the original executable. The executable name is the most stable identity
 a manually installed game has, and NOVARA already records it per installation.
 
+### 4.1 Normalisation rules for match values
+
+`match_value` must be stored **pre-normalised** for the two derived kinds, or a
+lookup will never hit. Both are applied by `saves::kb`:
+
+| Kind | Rule | Example |
+|---|---|---|
+| `title_norm` | Every non-alphanumeric character removed, including spaces; lowercased | `Marvel's Spider-Man` → `marvelsspiderman` |
+| `exe_name` | Directory and `.exe` extension stripped; lowercased | `D:/Games/Foo/Bin/Launcher.EXE` → `launcher` |
+
+Removing separators rather than collapsing them to a space is a deliberate
+correction: collapsing split words at apostrophes, so `Marvel's` became
+`marvel s` and could never match `Marvels`. Removing them makes hyphenated,
+spaced and compacted spellings all collide — `Half-Life 2`, `Half Life 2` and
+`HalfLife2` share one key — which is the direction that helps. Two genuinely
+different games almost never differ only by punctuation, and the value is a
+matching key, not a display string.
+
 ## 5. Template variables
 
 A closed set. Anything outside it is rejected at import (security §7).
@@ -284,14 +302,40 @@ Cold-starting a KB is the practical risk (§11). Options, in order of preference
 
 | Source | Licence care | Value |
 |---|---|---|
-| Hand-curated top ~500 titles | none | High per entry; makes the feature feel real on day one |
-| Launcher conventions (Steam `userdata`, Epic, GOG Galaxy defaults) | none | Broad coverage from a handful of *rules* rather than entries |
+| Hand-curated top titles | none | High per entry; makes the feature feel real on day one |
+| **Engine and OS convention rules** (Unreal's `Saved/SaveGames`, Unity's `LocalLow/<company>/<product>`, the Windows `Saved Games` and `My Games` known folders) | none | Broad coverage from a handful of *rules* rather than entries |
 | Existing open datasets (PCGamingWiki, Ludusavi manifest) | **Must check licence and attribute** | Very large; would be transformative if compatible |
 | User contributions | consent (§8) | Slow start, compounding |
 
-The launcher-conventions row is the highest leverage: a dozen template rules cover
-thousands of games because launcher-managed titles are conventional by definition.
-Manual installs are where per-entry curation is unavoidable.
+The convention row is the highest leverage, and it is worth being precise about
+*why* — an earlier draft of this document called these "launcher conventions", which
+was wrong in a way that mattered.
+
+**They are engine and operating-system conventions, not launcher conventions.**
+Steam, GOG and Epic impose almost no save-location convention on the games they
+distribute; a game's save path is chosen by its engine or its developer, and the
+storefront is irrelevant to it. What *is* conventional:
+
+| Convention | Origin |
+|---|---|
+| `{LOCALAPPDATA}/<Game>/Saved/SaveGames` | Unreal Engine 4/5 default |
+| `{LOCALLOW}/<Company>/<Product>` | Unity `Application.persistentDataPath` |
+| `{SAVEDGAMES}/<Game>` | Windows Vista+ `FOLDERID_SavedGames` known folder |
+| `{MYGAMES}/<Game>` | Games for Windows guidance, widely adopted since |
+| `{APPDATA}/<Vendor>/<Game>` | General Windows roaming-profile practice |
+
+These rules work because a convention entry uses `match_kind = 'any'` and a
+candidate is only produced when the expanded path **actually exists**. One Unreal
+rule therefore covers every Unreal game in a library without NOVARA knowing which
+games use Unreal — and costs one `is_dir` check per game for the ones that do not.
+
+The one genuine *launcher* convention, Steam Cloud's
+`<Steam install>/userdata/<account id>/<appid>/remote`, is **not currently
+expressible**: the template variable set has no anchor for the Steam installation
+directory, and inventing one that resolved to a guessed path would be worse than
+omitting the rule. Adding a `{STEAM_INSTALL}` anchor is a small, well-defined future
+task — the Steam library locations are already discovered by
+`scanner::steam`.
 
 Any use of a third-party dataset requires a licence review before a line of import
 code is written. This is a legal precondition, not an implementation detail.
@@ -312,7 +356,7 @@ scan, and locked bindings skip it entirely.
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| **Empty corpus makes the feature look broken** | High | Seed with launcher conventions + top titles before shipping Phase 1; the Write Witness carries games the KB misses |
+| **Empty corpus makes the feature look broken** | High | Seed with engine/OS convention rules + curated titles before shipping Phase 1; the Write Witness carries games the KB misses |
 | A KB update overwrites user decisions | Critical | Layer separation; KB writes candidates only; `is_locked` bindings untouchable; explicit test |
 | Wrong entries erode trust | Medium | `source_ref` provenance; corrections are just higher-priority entries; per-entry rejection recorded locally |
 | Licence contamination from an imported dataset | High | Legal review before import; attribution recorded in `source_ref` |

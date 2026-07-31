@@ -121,7 +121,21 @@ Notes on the format's deliberate choices:
 - **No confidence numbers.** Asserting them would lock in arbitrary values
   ([`TESTING.md`](../architecture/TESTING.md) §8).
 - **`{DRIVE}`, `{DOCUMENTS}` etc. are the same closed variable set the KB uses**, so
-  a scenario is portable and cannot express a real absolute path.
+  a scenario is portable and cannot express a real absolute path. They expand
+  beneath a synthetic home (`C:/Users/test`), never the machine's own.
+- **`pending` marks a fixture that leads the implementation.** §7 requires a
+  mis-detection case to be merged *failing*, before the fix; this is that mechanism.
+  It is deliberately two-sided — the runner skips a pending fixture's assertions,
+  **but fails if a pending fixture starts passing**, so the marker cannot outlive the
+  work it was waiting for. The value names what it waits on
+  (`pending = "task 1.17 (verifier)"`).
+- **`[[sessions]]` parses but is refused** with a "Phase 2" message rather than
+  ignored, so a Write Witness fixture cannot appear to pass while testing nothing.
+
+**Phase 1 `[expect]` vocabulary.** Automatic binding is Phase 3, so Phase 1 records
+a decision without acting on it. The strongest outcome a fixture can assert is
+`bind_eligible` — the candidate the decision table *would* bind. `binding`,
+`origin` and `locked` arrive with the binding store.
 
 ## 4. Core cases
 
@@ -300,14 +314,46 @@ negative/flight-sim-vendor-folder.toml  alias over-stripping
 
 Twelve files, no Rust, covering the majority of the behaviours that matter.
 
+### 5.1 Corpus coverage is data-driven, not one file per title
+
+The built-in KB carries ~40 entries. Forty near-identical fixtures would rot as a
+set and would not test the thing worth testing, so coverage of the *corpus* lives in
+`saves::kb::corpus_tests` and is **derived from the corpus itself**: every entry is
+walked, the world in which it should fire is synthesised, and the entry is required
+to produce a candidate. Adding a KB entry therefore adds a case automatically, and
+coverage cannot fall behind the data.
+
+What that catches is the failure a growing corpus actually develops: an entry that
+is well-formed, validates cleanly, and can never match anything — an unreachable
+key, an anchor no context supplies, a variable no game carries. Such an entry passes
+review and does nothing in production.
+
+Named-title `.toml` scenarios remain the vehicle for *behaviour* — ordering, false
+positives, alias handling — where the value is in the specific case rather than in
+the breadth.
+
+**Prerequisite for KB-driven scenarios.** `[[kb]]` blocks parse but are currently
+inert: `scenario::runner` is filesystem-only and holds no `Db`, and `pipeline::detect`
+does not yet consult the KB. Writing KB fixtures before the runner has a database
+would produce files that look like coverage while asserting nothing — worse than
+having none. Giving the runner a `Db` and seeding `[[kb]]` belongs with task 1.22,
+where the resolver is wired into the pipeline.
+
 ## 6. Definition of done for Phase 1 and Phase 2
 
 | Phase | Gate |
 |---|---|
-| **Phase 1** | Every decision-table row has ≥ 1 positive and ≥ 1 negative scenario. `official/`, `portable/`, `negative/` and `safety/` populated to at least half their target counts. Invariants I2, I3, I9, I10 passing |
-| **Phase 2** | `emulated/witness-beats-alias.toml` passing. `ambiguity/` populated. Invariants I1 and I4 passing |
+| **Phase 1** | Every **Phase-1-reachable** decision-table row has ≥ 1 positive and ≥ 1 negative scenario. `official/`, `portable/`, `negative/` and `safety/` populated to at least half their target counts. Invariants I2, I3, I9, I10 passing |
+| **Phase 2** | `emulated/witness-beats-alias.toml` passing, plus a positive and negative case for rows 3, 4 and 6. `ambiguity/` populated. Invariants I1 and I4 passing |
 | **Phase 3** | `override/`, `kb-refresh/`, `migration/` populated. Invariants I1 and I7 passing |
 | **Phase 4** | Vault plan written and hostile-archive corpus passing. Invariants I6 and I8 passing |
+
+**On "Phase-1-reachable".** Rows 3, 4 and 6 of the decision table depend on
+`WriteWitness` evidence, which no subsystem produces until Phase 2. They are written
+into the table from the start — so precedence is correct and Phase 2 only has to begin
+emitting the evidence — but they are unreachable and therefore untestable in Phase 1.
+Their scenarios are a Phase 2 gate instead. Rows 1, 5, 7, 8, 9 and 10 are reachable in
+Phase 1 and must each be covered both ways.
 
 Phase gates expressed as tests rather than features is the point: "detection works"
 is unfalsifiable, "these 180 scenarios pass" is not.

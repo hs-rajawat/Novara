@@ -1,0 +1,435 @@
+{
+  "version": "2026-07-31.1",
+  "_about": [
+    "NOVARA built-in save-location knowledge base. Compiled into the binary via",
+    "include_str!, so a fresh offline install detects saves for common titles on",
+    "first launch.",
+    "",
+    "TWO KINDS OF ENTRY.",
+    "",
+    "1. Convention rules (match_kind = 'any', priority 100). These describe ENGINE",
+    "   and OPERATING SYSTEM conventions, not launcher conventions -- Steam, GOG and",
+    "   Epic impose almost no save-location convention on what they distribute. A",
+    "   convention rule is safe to apply to every game because a candidate is only",
+    "   produced when the expanded path actually exists, so one Unreal rule covers",
+    "   every Unreal game without NOVARA knowing which games use Unreal.",
+    "",
+    "2. Curated titles (match_kind = 'title_norm', priority 10). Lower priority",
+    "   number wins, so a curated entry outranks a convention rule.",
+    "",
+    "PROVENANCE. Every curated entry carries source_ref 'curated:phase1'. These come",
+    "from the author's own familiarity with these games, NOT from PCGamingWiki,",
+    "Ludusavi or any other dataset -- none were consulted, and importing one requires",
+    "a licence review first (see KNOWLEDGE_BASE.md 9).",
+    "",
+    "VALIDATION (task 1.22). Probed against a real machine's filesystem. Result:",
+    "  - CONFIRMED: builtin:elden-ring resolved a real {WILDCARD} account directory,",
+    "    validating wildcard expansion end to end on real data.",
+    "  - CORRECTED: red-dead-redemption-2. The game folder existed but Profiles/ did",
+    "    not, so the entry contributed nothing on an installed game. A parent-level",
+    "    fallback was ADDED at lower precedence rather than replacing the precise",
+    "    entry -- both are correct, and the precise one still wins when it resolves.",
+    "    The same fallback was added for GTA V, whose vendor folder was confirmed.",
+    "  - INCONCLUSIVE: the remaining 27. Their games are not installed on the test",
+    "    machine, so a miss says nothing about the path. Entries carrying",
+    "    source_ref 'curated:phase1' remain UNVERIFIED.",
+    "  Nothing was removed. A miss with no evidence is not grounds for deletion.",
+    "",
+    "WHEN UNSURE, OMIT. A wrong entry is worse than a missing one: the Write Witness",
+    "(Phase 2) will find what the KB misses, but a wrong path can be bound and",
+    "restored into. Two rules followed here: no path was guessed, and where the exact",
+    "subfolder was uncertain the PARENT directory was used instead (Terraria, for",
+    "example, keeps saves in both Players/ and Worlds/, so the entry names Terraria/).",
+    "",
+    "NOT EXPRESSIBLE YET. Steam Cloud's <Steam install>/userdata/<id>/<appid>/remote",
+    "is the one genuine launcher convention, and the template variable set has no",
+    "anchor for the Steam installation directory. Inventing one that resolved to a",
+    "guessed path would be worse than omitting the rule.",
+    "",
+    "match_value for title_norm must be pre-normalised: lowercase, all",
+    "non-alphanumerics removed (KNOWLEDGE_BASE.md 4.1). Validation rejects anything",
+    "else rather than repairing it."
+  ],
+
+  "entries": [
+    {
+      "id": "builtin:convention-unreal-savegames",
+      "match_kind": "any",
+      "path_template": "{LOCALAPPDATA}/{TITLE}/Saved/SaveGames",
+      "priority": 100,
+      "note": "Unreal Engine 4/5 default save location",
+      "source_ref": "engine-convention:unreal"
+    },
+    {
+      "id": "builtin:convention-unity-locallow-developer",
+      "match_kind": "any",
+      "path_template": "{LOCALLOW}/{DEVELOPER}/{TITLE}",
+      "priority": 100,
+      "note": "Unity Application.persistentDataPath (company/product)",
+      "source_ref": "engine-convention:unity"
+    },
+    {
+      "id": "builtin:convention-unity-locallow-publisher",
+      "match_kind": "any",
+      "path_template": "{LOCALLOW}/{PUBLISHER}/{TITLE}",
+      "priority": 100,
+      "note": "Unity persistentDataPath where the publisher is the company name",
+      "source_ref": "engine-convention:unity"
+    },
+    {
+      "id": "builtin:convention-known-folder-saved-games",
+      "match_kind": "any",
+      "path_template": "{SAVEDGAMES}/{TITLE}",
+      "priority": 100,
+      "note": "Windows Vista+ FOLDERID_SavedGames known folder",
+      "source_ref": "os-convention:windows-known-folder"
+    },
+    {
+      "id": "builtin:convention-my-games",
+      "match_kind": "any",
+      "path_template": "{MYGAMES}/{TITLE}",
+      "priority": 100,
+      "note": "Documents/My Games, from Games for Windows guidance",
+      "source_ref": "os-convention:my-games"
+    },
+    {
+      "id": "builtin:convention-my-games-saves",
+      "match_kind": "any",
+      "path_template": "{MYGAMES}/{TITLE}/Saves",
+      "priority": 100,
+      "note": "Documents/My Games with a Saves subfolder",
+      "source_ref": "os-convention:my-games"
+    },
+    {
+      "id": "builtin:convention-appdata-vendor-publisher",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/{PUBLISHER}/{TITLE}",
+      "priority": 100,
+      "note": "Windows roaming profile, vendor folder",
+      "source_ref": "os-convention:windows-roaming"
+    },
+    {
+      "id": "builtin:convention-appdata-vendor-developer",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/{DEVELOPER}/{TITLE}",
+      "priority": 100,
+      "note": "Windows roaming profile, developer folder",
+      "source_ref": "os-convention:windows-roaming"
+    },
+    {
+      "id": "builtin:convention-appdata-title",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/{TITLE}",
+      "priority": 100,
+      "note": "Windows roaming profile, game folder directly",
+      "source_ref": "os-convention:windows-roaming"
+    },
+    {
+      "id": "builtin:convention-localappdata-title",
+      "match_kind": "any",
+      "path_template": "{LOCALAPPDATA}/{TITLE}",
+      "priority": 100,
+      "note": "Windows local profile, game folder directly",
+      "source_ref": "os-convention:windows-local"
+    },
+    {
+      "id": "builtin:convention-documents-title",
+      "match_kind": "any",
+      "path_template": "{DOCUMENTS}/{TITLE}",
+      "priority": 100,
+      "note": "Documents, game folder directly",
+      "source_ref": "os-convention:documents"
+    },
+    {
+      "id": "builtin:convention-install-saves",
+      "match_kind": "any",
+      "path_template": "{INSTALL}/saves",
+      "priority": 100,
+      "note": "Portable and scene releases commonly save beside the executable",
+      "source_ref": "os-convention:portable"
+    },
+    {
+      "id": "builtin:convention-install-save",
+      "match_kind": "any",
+      "path_template": "{INSTALL}/Save",
+      "priority": 100,
+      "note": "Portable layout, singular folder name",
+      "source_ref": "os-convention:portable"
+    },
+    {
+      "id": "builtin:convention-install-savegames",
+      "match_kind": "any",
+      "path_template": "{INSTALL}/savegames",
+      "priority": 100,
+      "note": "Portable layout",
+      "source_ref": "os-convention:portable"
+    },
+
+    {
+      "id": "builtin:skyrim-special-edition",
+      "match_kind": "title_norm",
+      "match_value": "skyrimspecialedition",
+      "path_template": "{MYGAMES}/Skyrim Special Edition/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:skyrim",
+      "match_kind": "title_norm",
+      "match_value": "skyrim",
+      "path_template": "{MYGAMES}/Skyrim/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:starfield",
+      "match_kind": "title_norm",
+      "match_value": "starfield",
+      "path_template": "{MYGAMES}/Starfield/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:fallout-4",
+      "match_kind": "title_norm",
+      "match_value": "fallout4",
+      "path_template": "{MYGAMES}/Fallout4/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:fallout-3",
+      "match_kind": "title_norm",
+      "match_value": "fallout3",
+      "path_template": "{MYGAMES}/Fallout3/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:fallout-new-vegas",
+      "match_kind": "title_norm",
+      "match_value": "falloutnewvegas",
+      "path_template": "{MYGAMES}/FalloutNV/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:grand-theft-auto-v",
+      "match_kind": "title_norm",
+      "match_value": "grandtheftautov",
+      "path_template": "{DOCUMENTS}/Rockstar Games/GTA V/Profiles",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:grand-theft-auto-v-parent",
+      "match_kind": "title_norm",
+      "match_value": "grandtheftautov",
+      "path_template": "{DOCUMENTS}/Rockstar Games/GTA V",
+      "priority": 20,
+      "note": "Fallback: the game folder itself, for an install with no profile yet",
+      "source_ref": "curated:phase1-validated-1.22"
+    },
+    {
+      "id": "builtin:red-dead-redemption-2",
+      "match_kind": "title_norm",
+      "match_value": "reddeadredemption2",
+      "path_template": "{DOCUMENTS}/Rockstar Games/Red Dead Redemption 2/Profiles",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:red-dead-redemption-2-parent",
+      "match_kind": "title_norm",
+      "match_value": "reddeadredemption2",
+      "path_template": "{DOCUMENTS}/Rockstar Games/Red Dead Redemption 2",
+      "priority": 20,
+      "note": "Fallback: verified present on a real install where Profiles/ was absent (task 1.22)",
+      "source_ref": "curated:phase1-validated-1.22"
+    },
+    {
+      "id": "builtin:the-witcher-3",
+      "match_kind": "title_norm",
+      "match_value": "thewitcher3",
+      "path_template": "{DOCUMENTS}/The Witcher 3/gamesaves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:the-witcher-3-wild-hunt",
+      "match_kind": "title_norm",
+      "match_value": "thewitcher3wildhunt",
+      "path_template": "{DOCUMENTS}/The Witcher 3/gamesaves",
+      "priority": 10,
+      "note": "Same folder; the store title carries the subtitle, the folder does not",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:cyberpunk-2077",
+      "match_kind": "title_norm",
+      "match_value": "cyberpunk2077",
+      "path_template": "{SAVEDGAMES}/CD Projekt Red/Cyberpunk 2077",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:elden-ring",
+      "match_kind": "title_norm",
+      "match_value": "eldenring",
+      "path_template": "{APPDATA}/EldenRing/{WILDCARD}",
+      "priority": 10,
+      "note": "Per-account directory named after the Steam id",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:dark-souls-iii",
+      "match_kind": "title_norm",
+      "match_value": "darksoulsiii",
+      "path_template": "{APPDATA}/DarkSoulsIII/{WILDCARD}",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:sekiro",
+      "match_kind": "title_norm",
+      "match_value": "sekiroshadowsdietwice",
+      "path_template": "{APPDATA}/Sekiro/{WILDCARD}",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:divinity-original-sin-2",
+      "match_kind": "title_norm",
+      "match_value": "divinityoriginalsin2",
+      "path_template": "{DOCUMENTS}/Larian Studios/Divinity Original Sin 2",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:baldurs-gate-3",
+      "match_kind": "title_norm",
+      "match_value": "baldursgate3",
+      "path_template": "{LOCALAPPDATA}/Larian Studios/Baldur's Gate 3/PlayerProfiles",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:stardew-valley",
+      "match_kind": "title_norm",
+      "match_value": "stardewvalley",
+      "path_template": "{APPDATA}/StardewValley/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:terraria",
+      "match_kind": "title_norm",
+      "match_value": "terraria",
+      "path_template": "{MYGAMES}/Terraria",
+      "priority": 10,
+      "note": "Parent folder: players and worlds are separate subfolders",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:hollow-knight",
+      "match_kind": "title_norm",
+      "match_value": "hollowknight",
+      "path_template": "{LOCALLOW}/Team Cherry/Hollow Knight",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:celeste",
+      "match_kind": "title_norm",
+      "match_value": "celeste",
+      "path_template": "{LOCALAPPDATA}/Celeste/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:minecraft",
+      "match_kind": "title_norm",
+      "match_value": "minecraft",
+      "path_template": "{APPDATA}/.minecraft/saves",
+      "priority": 10,
+      "note": "Java Edition",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:factorio",
+      "match_kind": "title_norm",
+      "match_value": "factorio",
+      "path_template": "{APPDATA}/Factorio/saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:rimworld",
+      "match_kind": "title_norm",
+      "match_value": "rimworld",
+      "path_template": "{LOCALLOW}/Ludeon Studios/RimWorld by Ludeon Studios/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:hades",
+      "match_kind": "title_norm",
+      "match_value": "hades",
+      "path_template": "{DOCUMENTS}/Saved Games/Hades",
+      "priority": 10,
+      "note": "Documents/Saved Games, not the Windows known folder of the same name",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:subnautica",
+      "match_kind": "title_norm",
+      "match_value": "subnautica",
+      "path_template": "{LOCALLOW}/Unknown Worlds/Subnautica",
+      "priority": 10,
+      "note": "Parent folder; saved games sit in a subfolder",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:valheim",
+      "match_kind": "title_norm",
+      "match_value": "valheim",
+      "path_template": "{LOCALLOW}/IronGate/Valheim",
+      "priority": 10,
+      "note": "Parent folder; worlds and characters are separate subfolders",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:no-mans-sky",
+      "match_kind": "title_norm",
+      "match_value": "nomanssky",
+      "path_template": "{APPDATA}/HelloGames/NMS",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:civilization-vi",
+      "match_kind": "title_norm",
+      "match_value": "sidmeierscivilizationvi",
+      "path_template": "{MYGAMES}/Sid Meier's Civilization VI/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:xcom-2",
+      "match_kind": "title_norm",
+      "match_value": "xcom2",
+      "path_template": "{MYGAMES}/XCOM2",
+      "priority": 10,
+      "note": "Parent folder; save data sits deeper",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:undertale",
+      "match_kind": "title_norm",
+      "match_value": "undertale",
+      "path_template": "{LOCALAPPDATA}/UNDERTALE",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    }
+  ]
+}

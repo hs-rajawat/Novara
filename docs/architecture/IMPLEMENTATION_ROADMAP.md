@@ -58,7 +58,7 @@ and content verification. Ships as "NOVARA finds your saves properly."
 | Database | `save_kb_entries`, `save_kb_versions`, `save_candidates`, `save_scan_attempts` |
 | Backend | `saves_get_state`, `saves_rescan`, `saves_reject`; `kb_status`, `kb_add_user_entry` |
 | Frontend | Saves tab lists candidates with human-readable reasons |
-| Risks | **Empty corpus makes it look broken** — seed launcher conventions + top titles first. Scan cost on large libraries — bounded per §7.2 and backoff-gated. |
+| Risks | **Empty corpus makes it look broken** — seed engine/OS convention rules + curated titles first. Scan cost on large libraries — bounded per §7.2 and backoff-gated. |
 | Testing | Locator/verifier are pure over a temp-dir fixture tree. Decision table is table-driven, one case per rule. KB matching tested per `match_kind` precedence. |
 | Complexity | **L** |
 
@@ -180,11 +180,33 @@ invariants in [`TESTING.md`](./TESTING.md) §4. In summary:
 | Phase | Gate |
 |---|---|
 | 0 | Existing suites pass unchanged; `VirtualFs` exists and a trivial scenario runs |
-| 1 | Every decision-table row has a positive and a negative case; invariants I2, I3, I9, I10 |
-| 2 | `emulated/witness-beats-alias.toml` passes; invariants I1, I4 |
+| 1 | Every Phase-1-reachable decision row has a positive and a negative case; invariants I2, I3, I9, I10 |
+| 2 | `emulated/witness-beats-alias.toml` passes, rows 3/4/6 covered; invariants I1, I4 |
 | 3 | `override/`, `kb-refresh/`, `migration/` populated; invariants I1, I7 |
 | 4 | Hostile-archive corpus passes; invariants I6, I8 |
 | 6 | Re-parse never modifies a `source='user'` row; invariant I5 |
+
+### Phase 1 scope, as agreed
+
+Narrower than the phase table above, deliberately:
+
+- **In:** knowledge base (built-in + user layers), candidate generation, verifier,
+  resolver, scenario corpus.
+- **Out:** the Write Witness and file watchers (Phase 2); `save_bindings`,
+  `is_locked` and **automatic binding** (Phase 3); the community KB layer and any
+  network access (Phase 8); progress and achievement extraction (Phases 5–6); all
+  frontend work.
+- **Consequence of excluding automatic binding:** the resolver *computes and records*
+  a decision without acting on it. `save_candidates.status` carries
+  `bind_eligible` where the table says "bind", and Phase 3 converts those into real
+  bindings once there is a store and a correction UI. Auto-binding before a user can
+  correct it would be the "wrong binding destroys a save" risk with no escape hatch.
+- **Phase 1 is not behaviour-neutral.** Unlike Phase 0, `detect_save_paths` will
+  return better candidates and better hints. Its IPC *shape* is fixed so no UI change
+  is required, but its content changes and needs verification against a real library.
+- **KB seeding:** hand-curated only, ~25–50 representative titles plus launcher
+  convention rules. No third-party dataset import until the licence review in open
+  decision 6 is complete.
 
 ---
 
@@ -199,6 +221,8 @@ These block the phases named. Deciding them late is expensive.
 | 3 | **Retention default.** | Phase 4 | Keep last 10 `session_end` per game; keep all `manual` and `pre_restore`. |
 | 4 | **Vocabulary: "achievements" for both imported and user-authored?** | Phase 6 UI copy | Use "Achievements" for imported and "Goals" for user-authored. Conflating them is the confusion, not the fix. |
 | 5 | **Where does the library completion state live?** It was removed from Game Details, so `set_completion` currently has no UI caller and the state is user-unassignable app-wide. | Not blocking, but user-visible now | Decide as part of library-management UI, not this architecture. Recorded so it is not forgotten. |
-| 6 | **KB seeding source.** Hand-curated only, or import an existing open dataset? | Phase 1 | Requires a **licence review** before any import code. Launcher conventions give broad coverage licence-free — start there. |
+| 6 | **KB seeding source.** Hand-curated only, or import an existing open dataset? | Phase 1 | Requires a **licence review** before any import code. Engine and OS convention rules give broad coverage licence-free — start there. See [KB §9](./KNOWLEDGE_BASE.md#9-seeding-the-corpus) for why these are engine/OS rather than launcher conventions. |
+| 7 | **Verifying the curated seed.** Every `curated:phase1` entry is authored from familiarity, not from a dataset, and is therefore unverified. | Phase 1, task 1.22 | Check against a real library during 1.22. Entries that do not resolve on a machine that owns the game should be corrected or removed, not left hopeful. |
+| 8 | **`{STEAM_INSTALL}` anchor.** Steam Cloud's `userdata/<id>/<appid>/remote` is the one genuine launcher convention and is not expressible today. | after Phase 1 | Needs an anchor for the Steam install directory; `scanner::steam` already discovers library locations. Omitted rather than guessed. |
 
 Decision 6 is the one with a real external dependency; the rest are ours to make.

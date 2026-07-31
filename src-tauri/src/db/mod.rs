@@ -19,6 +19,8 @@ pub mod achievements;
 pub mod artwork;
 pub mod games;
 pub mod playtime;
+pub mod save_candidates;
+pub mod save_kb;
 pub mod saves;
 pub mod settings;
 pub mod title_match;

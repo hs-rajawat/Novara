@@ -82,6 +82,31 @@ impl AppState {
             throttle,
         ));
 
+        // Load the embedded save-location knowledge base. Idempotent: a checksum
+        // comparison short-circuits this to one query on every launch after the
+        // first, and re-running it cannot duplicate entries.
+        //
+        // A failure here is a defect in the shipped corpus, not anything a user
+        // did, so it is logged at error level and startup continues. NOVARA is a
+        // game launcher first — refusing to start because a save-detection hint
+        // file is malformed would trade a degraded feature for an unusable app.
+        // `builtin::tests::the_embedded_kb_parses_and_every_entry_validates` is
+        // what actually prevents this from shipping, and it fails the build.
+        match crate::saves::kb::builtin::load(&db).await {
+            Ok(Ok(crate::saves::kb::builtin::LoadOutcome::Applied { version, entries })) => {
+                info!(version = %version, entries, "applied built-in save knowledge base")
+            }
+            Ok(Ok(crate::saves::kb::builtin::LoadOutcome::AlreadyCurrent { version })) => {
+                info!(version = %version, "built-in save knowledge base already current")
+            }
+            Ok(Err(e)) => tracing::error!(
+                error = %e,
+                "built-in save knowledge base is invalid — save detection will be \
+                 degraded. This is a packaging defect; please report it."
+            ),
+            Err(e) => warn!(error = %e, "could not load the built-in save knowledge base"),
+        }
+
         // Reconcile sessions left open by a previous run before the watcher
         // starts. Nothing else will ever close them: the tracker's in-memory
         // map begins empty, so those rows have no owner. Done before the

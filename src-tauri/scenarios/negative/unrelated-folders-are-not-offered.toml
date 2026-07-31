@@ -1,0 +1,29 @@
+version = 1
+
+[scenario]
+id = "unrelated-folders-are-not-offered"
+title = "A library full of other games' folders yields nothing for this one"
+tags = ["negative", "alias"]
+
+# The baseline negative case: detection must be silent rather than creative. A
+# populated Documents tree with no plausible match produces no candidates at all.
+#
+# Passes today. Guards against a future alias transform so aggressive that it
+# matches arbitrary directories.
+[game]
+title = "Hollow Knight"
+
+[[fs]]
+path = "{MYGAMES}/Skyrim Special Edition"
+files = [{ name = "Save1.ess", size = 9000000 }]
+
+[[fs]]
+path = "{DOCUMENTS}/Visual Studio 2022"
+files = [{ name = "settings.json", size = 4000 }]
+
+[[fs]]
+path = "{APPDATA}/Discord"
+files = [{ name = "settings.json", size = 8000 }]
+
+[expect]
+suggested = []

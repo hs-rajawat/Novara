@@ -1,0 +1,35 @@
+version = 1
+
+[scenario]
+id = "photos-name-collision"
+title = "A game called Photos must not claim the user's Documents/Photos"
+tags = ["negative", "false-positive", "name-collision"]
+
+# The canonical false positive from the test plan. Name similarity alone is the
+# weakest signal there is, and this is why: `Documents/Photos` is overwhelmingly
+# likely to be photographs.
+#
+# Passing since task 1.15 — but by a DIFFERENT mechanism than originally planned.
+# This was marked pending on the verifier (task 1.17); what actually resolved it is
+# the user-content ignore list, which excludes `Photos` by name before any content is
+# considered.
+#
+# That is a precision trade made deliberately: a game genuinely called `Photos` is now
+# a false negative. It is the cheaper error, because offering this folder invites a
+# user to bind it and later restore over their own files.
+#
+# The verifier is still required. See `screenshots-in-a-game-folder.toml`, which is a
+# collision the ignore list cannot see and only content inspection can reject.
+[game]
+title = "Photos"
+
+[[fs]]
+path = "{DOCUMENTS}/Photos"
+files = [
+  { name = "IMG_0001.jpg", size = 3400000 },
+  { name = "IMG_0002.jpg", size = 3100000 },
+  { name = "IMG_0003.jpg", size = 2900000 },
+]
+
+[expect]
+must_not_include = ["{DOCUMENTS}/Photos"]

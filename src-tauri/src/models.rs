@@ -139,6 +139,81 @@ pub struct PlaySession {
     pub process_name: Option<String>,
 }
 
+/// One knowledge-base entry: a save-location claim, not a fact about this machine.
+///
+/// The KB describes the *typical* installation. Which is why an entry produces a
+/// candidate and never a binding — see `docs/architecture/KNOWLEDGE_BASE.md` §1.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SaveKbEntry {
+    pub id: String,
+    /// `builtin` | `community` | `user`. Affects evidence strength and conflict
+    /// resolution; never authority over a user's own decision.
+    pub layer: String,
+    pub match_kind: String,
+    /// Empty string when `match_kind = 'any'`.
+    pub match_value: String,
+    pub platform: String,
+    pub role: String,
+    /// e.g. `{APPDATA}/{PUBLISHER}/{TITLE}`. Expanded from a closed variable set.
+    pub path_template: String,
+    pub glob: Option<String>,
+    pub priority: i64,
+    pub note: Option<String>,
+    /// Provenance. What makes a wrong entry fixable a year later.
+    pub source_ref: Option<String>,
+    pub kb_version: String,
+    pub created_at: String,
+}
+
+/// The applied version of one KB layer.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SaveKbVersion {
+    pub layer: String,
+    pub version: String,
+    pub checksum: String,
+    pub entry_count: i64,
+    pub applied_at: String,
+    pub source_url: Option<String>,
+}
+
+/// A possible save location for one game on this machine, with the evidence that
+/// suggested it.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SaveCandidate {
+    pub id: i64,
+    pub game_id: String,
+    pub path: String,
+    pub role: String,
+    /// `candidate` | `bind_eligible` | `suggested` | `rejected`.
+    ///
+    /// `bind_eligible` is what Phase 1 records where the decision table says
+    /// "bind": the decision is computed and stored, but nothing acts on it until
+    /// Phase 3 has a binding store and a correction UI.
+    pub status: String,
+    /// Ordering and display only — never decides an outcome (ADR-0002).
+    pub score: f64,
+    /// Versioned, append-only JSON. See `crate::saves::evidence`.
+    pub evidence_json: String,
+    /// Which decision-table row produced `status`.
+    pub decided_by_rule: Option<i64>,
+    /// The sentence shown to the user. Never empty once decided (invariant I9).
+    pub explanation: Option<String>,
+    pub first_seen_at: String,
+    pub last_scored_at: Option<String>,
+}
+
+/// Detection's record of having looked, so a fruitless scan is not repeated on
+/// every library load. Negative results expire; positive results do not (ADR-0007).
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SaveScanAttempt {
+    pub game_id: String,
+    pub last_attempt: String,
+    pub attempt_count: i64,
+    pub outcome: String,
+    /// NULL means eligible now.
+    pub next_retry_at: Option<String>,
+}
+
 /// Helper for fresh RFC3339 timestamps. Kept in one place so we never
 /// stringify times two different ways.
 pub fn now_rfc3339() -> String {

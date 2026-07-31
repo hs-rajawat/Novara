@@ -68,6 +68,12 @@ ring = "0.17"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 
+[dev-dependencies]
+# Detection scenarios are declarative fixtures rather than per-game Rust
+# (ADR-0013). TOML is for authoring comfort — a fixture is read by a human far
+# more often than by the runner. Dev-only, so it never ships in the binary.
+toml = "0.8"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

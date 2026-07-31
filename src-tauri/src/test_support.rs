@@ -372,6 +372,7 @@ impl crate::metadata::ArtworkProvider for FakeArtworkProvider {
 /// `/` matches a candidate built with `Path::join` on Windows.
 pub struct VirtualFs {
     roots: Vec<crate::saves::fs::Root>,
+    anchors: std::collections::HashMap<crate::saves::fs::Anchor, std::path::PathBuf>,
     dirs: std::collections::HashSet<String>,
     files: std::collections::HashMap<String, crate::saves::fs::FileMeta>,
     queried: std::sync::Mutex<Vec<String>>,
@@ -381,6 +382,7 @@ impl VirtualFs {
     pub fn new() -> Self {
         Self {
             roots: Vec::new(),
+            anchors: std::collections::HashMap::new(),
             dirs: std::collections::HashSet::new(),
             files: std::collections::HashMap::new(),
             queried: std::sync::Mutex::new(Vec::new()),
@@ -395,28 +397,66 @@ impl VirtualFs {
 
     /// Declare a search root. It is registered as a directory automatically —
     /// a root that does not exist is expressed with [`Self::with_missing_root`].
+    ///
+    /// Also registers the corresponding template anchor, so a fixture never has to
+    /// declare the same location twice. A root that is not an anchor — the per-game
+    /// install directory — registers no anchor.
     pub fn with_root(mut self, kind: crate::saves::fs::RootKind, path: &str) -> Self {
         self.roots.push(crate::saves::fs::Root {
             path: std::path::PathBuf::from(path),
             kind,
         });
+        if let Some(anchor) = kind.anchor() {
+            self.anchors.insert(anchor, std::path::PathBuf::from(path));
+        }
         self.dirs.insert(path.replace('\\', "/"));
         self
     }
 
     /// Declare a root that is absent on this machine, so the "skip missing roots"
-    /// path can be exercised.
+    /// path can be exercised. Its anchor still resolves — a template may name a
+    /// directory that does not exist, and expansion must then simply find nothing.
     pub fn with_missing_root(mut self, kind: crate::saves::fs::RootKind, path: &str) -> Self {
         self.roots.push(crate::saves::fs::Root {
             path: std::path::PathBuf::from(path),
             kind,
         });
+        if let Some(anchor) = kind.anchor() {
+            self.anchors.insert(anchor, std::path::PathBuf::from(path));
+        }
+        self
+    }
+
+    /// Declare a template anchor that is not a search root — `{USERPROFILE}`,
+    /// `{PUBLIC}`.
+    pub fn with_anchor(mut self, anchor: crate::saves::fs::Anchor, path: &str) -> Self {
+        self.anchors.insert(anchor, std::path::PathBuf::from(path));
         self
     }
 
     /// Declare a directory. Ancestors are not implied — declare what the test needs.
     pub fn with_dir(mut self, path: &str) -> Self {
         self.dirs.insert(path.replace('\\', "/"));
+        self
+    }
+
+    /// Declare a directory **and every ancestor**, as a real filesystem would have.
+    ///
+    /// [`with_dir`](Self::with_dir) stays exact because tests that assert on a
+    /// *missing* parent depend on it. But wildcard expansion calls `read_dir` on the
+    /// parent, so a test that seeded only the leaf would find nothing and the
+    /// failure would look like a matching bug rather than an under-built world.
+    pub fn with_dir_tree(mut self, path: &str) -> Self {
+        let mut acc = String::new();
+        for segment in path.replace('\\', "/").split('/') {
+            if !acc.is_empty() {
+                acc.push('/');
+            }
+            acc.push_str(segment);
+            if !acc.is_empty() {
+                self.dirs.insert(acc.clone());
+            }
+        }
         self
     }
 
@@ -428,6 +468,25 @@ impl VirtualFs {
                 is_dir: false,
                 len,
                 modified: None,
+            },
+        );
+        self
+    }
+
+    /// Declare a file with a modification time, as seconds since the Unix epoch.
+    ///
+    /// Separate from [`with_file`](Self::with_file) so existing fixtures keep an
+    /// explicitly absent mtime — the verifier has to cope with a filesystem that
+    /// reports none, and a default would hide that path.
+    pub fn with_file_at(mut self, path: &str, len: u64, epoch_secs: u64) -> Self {
+        self.files.insert(
+            path.replace('\\', "/"),
+            crate::saves::fs::FileMeta {
+                is_dir: false,
+                len,
+                modified: Some(
+                    std::time::UNIX_EPOCH + std::time::Duration::from_secs(epoch_secs),
+                ),
             },
         );
         self
@@ -452,6 +511,10 @@ impl Default for VirtualFs {
 impl crate::saves::fs::FileSystem for VirtualFs {
     fn roots(&self) -> Vec<crate::saves::fs::Root> {
         self.roots.clone()
+    }
+
+    fn anchor(&self, anchor: crate::saves::fs::Anchor) -> Option<std::path::PathBuf> {
+        self.anchors.get(&anchor).cloned()
     }
 
     fn exists(&self, path: &std::path::Path) -> bool {

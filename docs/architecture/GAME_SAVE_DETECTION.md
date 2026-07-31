@@ -284,6 +284,23 @@ gives us an exact answer.
 | Max file size read by verifier | 0 bytes | The verifier reads *metadata only* — never contents (§13) |
 | Per-game scan time budget | soft 2s | Exceeded → persist partial results, back off, continue next time |
 
+Implemented in `saves::bounds`, which carries **only the bounds that have a consumer**
+— a constant no test can exercise is a claim, not a control. Today that is the
+candidate ceiling, the similarity length cap, the fuzzy length floor and the
+similarity threshold. The verifier's read ceilings arrive with the verifier and the
+time budget with the backoff gate.
+
+One bound is not in the table above because fuzzy matching did not exist when it was
+written:
+
+| Bound | Value | Reason |
+|---|---|---|
+| Max directory entries examined per root | 2048 | Enumeration is the only operation whose cost scales with the *user's* filesystem rather than with anything NOVARA controls |
+
+`MAX_DEPTH_BELOW_ROOT` is currently a documented ceiling rather than an enforced one,
+because **nothing recurses**: each root is read exactly one level deep. It is recorded
+so the first code tempted to descend has a number to respect.
+
 ### 7.3 Ignore list
 
 Directories that generate false `WriteWitness` and `ContentShape` evidence:
@@ -296,6 +313,44 @@ Shaders  ShaderCache  Temp  tmp  CrashReportClient  Backup(ours)
 
 Maintained as data, not code — it will grow, and it is the difference between the
 Write Witness being useful and being noise.
+
+Implemented in `saves::ignore` as **two** lists, because they answer different
+questions and merging them makes both harder to reason about:
+
+* **Engine noise** — the list above. Directories a *game* creates that are not saves.
+* **User content** — `Photos`, `Pictures`, `Music`, `Videos`, `Downloads`, `OneDrive`
+  and similar. Directories a *person* creates that are not saves.
+
+Names are matched on the folded form, so `Crash Dumps`, `CrashDumps` and `crashdumps`
+are one entry rather than three. Matching is whole-name, never substring: `Temp` is
+ignored, `Tempest` is a game.
+
+The user-content list is a **deliberate precision trade**. A game genuinely called
+`Photos` is no longer detected by name. That is the cheaper error: `Documents/Photos`
+is overwhelmingly a photo folder, and offering it invites a user to bind it and later
+restore over their own files.
+
+It is **not** a substitute for content verification, and this distinction matters
+because it changed which task closes which case. A folder named exactly after the
+game but full of screenshots is still a false positive, still passes both lists, and
+still needs the verifier — see `scenarios/negative/screenshots-in-a-game-folder.toml`.
+
+### 7.4 The install directory is a root but not an anchor (task 1.16)
+
+The install directory is **per-game**, so it is never returned by
+`FileSystem::roots()` — that stays a description of the *machine* and continues to
+return exactly the six well-known locations. The locator appends it from the game
+context for the duration of one call.
+
+It is also matched differently. Name similarity to the title is the wrong question
+here: a portable release keeps saves in `saves/`, not in a folder named after the
+game, and the install directory is *already* named after the game. So the install root
+is matched against a small set of **conventional save folder names** (`saves`, `save`,
+`savegame`, `savegames`, `savedata`, `profile`, `players`, `userdata`) instead.
+
+**The install root itself is never offered.** Binding it would archive the whole game
+— tens of gigabytes of redistributable content to protect a few kilobytes of saves —
+which is the one outcome a portable-game user must not get.
 
 ## 8. Alias generation
 
@@ -326,6 +381,52 @@ normalised edit distance (case-folded, punctuation-stripped) rather than equalit
 so `Witcher3` matches `witcher 3`. Threshold for evidence: 0.75. Below that, no
 `NameMatch` is recorded at all.
 
+### 8.1 What normalisation is, and what it is not (task 1.14)
+
+Folding is applied to *both* sides before any distance is computed, which means case
+and separator differences are **not fuzzy matches at all** — they are noise, and
+`Hollow_Knight`, `hollow knight` and `HollowKnight` are simply equal to
+`Hollow Knight` at similarity 1.0.
+
+This corrected a confidence ladder the original detector carried, in which a
+lowercase folder scored 0.92, an underscored one 0.72 and a compacted one 0.60. Those
+numbers conflated *how unusual a spelling is* with *how likely the folder is to be
+the wrong one*. There is no world in which `HollowKnight` is a different game from
+`Hollow Knight`. Confidences below 1.0 are now reserved for transforms that lose real
+information: a stripped instalment number, a first word, an initialism.
+
+### 8.2 The sequel rule
+
+**A non-exact match requires the trailing instalment marker to be identical.**
+
+This is what makes an edit distance safe enough to ship. `fallout4` and `fallout3`
+differ by one character in eight: normalised similarity scores them 0.875, well above
+the threshold, and *Fallout 4* would be offered *Fallout 3*'s saves. `darksoulsii`
+against `darksoulsiii` scores 0.917.
+
+So a folder with no marker cannot approximately match a numbered title, and vice
+versa. This costs nothing real — a game and its own folder agree about which
+instalment they are — and removes the single most likely wrong binding in the design.
+
+A whole name made of numeral letters is exempt: `Civ` is c/i/v, and reading that as a
+numeral would make every comparison fail.
+
+**Known residual risk.** Stripping a trailing number is a transform this section
+retains, so *Portal 2* is still offered an unnumbered `Portal` folder if one exists.
+The match is capped at the stripped alias's 0.75, which §6 rule 9 places below
+anything that binds on name evidence alone. The confidence ceiling, not the absence
+of the candidate, is what contains it.
+
+### 8.3 Restrictions that keep recall gains from becoming false positives
+
+| Restriction | Reason |
+|---|---|
+| Weak aliases (initialism, first word) are matched **exactly only** | An edit distance applied to a guess compounds two sources of error |
+| Fuzzy matching requires a folded length ≥ 6 | Any two four-character names differing by one character score exactly 0.75 |
+| A fuzzy match multiplies its alias's confidence, never replaces it | A weak alias matched cleanly must not outrank a strong alias matched loosely |
+| Single-segment aliases that fold to a vendor or container word are dropped | `Documents/My Games` would otherwise be claimed by every game in the library |
+| `:` is refused in any path segment | `PathBuf::push("C:")` replaces the whole path on Windows rather than extending it |
+
 ## 9. Verification
 
 The verifier answers one question: **do this directory's contents look like
@@ -350,6 +451,75 @@ Write Witness get retroactive evidence from mtimes alone, on first scan, offline
 Explicit non-goals: no content parsing (that is
 [`PARSER_ARCHITECTURE.md`](./PARSER_ARCHITECTURE.md)), no hashing, no opening of
 files.
+
+### 9.1 Two budgets, because two kinds of information cost differently
+
+| Information | Source | Cost |
+|---|---|---|
+| Extension histogram, file and directory counts | names from `read_dir` | **free** — already returned by the listing |
+| Sizes, mtimes | `metadata()` per file | one syscall each, capped at 64 |
+
+That split is the whole performance story. Classifying a thousand files by extension
+costs one listing; characterising their sizes costs 64 stats and no more.
+
+**Nothing scales with the size of a save file.** `FileSystem` exposes no method that
+opens one, so "avoid reading contents" is not a discipline here — it is
+unrepresentable, which is ADR-0003's structural guarantee and why §7.2 records the
+verifier's maximum read size as literally `0 bytes`.
+
+Measured on a real filesystem (best of three, warm cache): a typical 12-file save
+folder 0.6 ms; a 500-file folder 2.7 ms; the same folder plus a 32 MB save 3.0 ms —
+confirming size-independence; a folder past the entry cap 6.8 ms. Worst case for one
+game is `VERIFIER_MAX_CANDIDATES_PER_GAME` × the per-candidate cost, about 88 ms,
+against a soft budget of 2 s.
+
+### 9.2 Signals, not a score
+
+The verifier emits a list of independent [`Signal`]s and does **not** combine them.
+Aggregation belongs to the evidence model (task 1.19); producing a number here would
+pre-empt a decision this layer is not entitled to make and would discard the reason
+behind it. `confidence` on a candidate continues to mean exactly one thing — name
+similarity — and verifier evidence is kept separate rather than folded into it.
+
+### 9.3 It can reject but never invent
+
+`verify` takes a path and returns an assessment. There is no return path by which a new
+directory could be proposed, so "the verifier never invents candidates" is a property of
+the signature rather than a rule to remember.
+
+Rejection is deliberately conservative, and two rules do most of that work:
+
+**A partial view never rejects.** Every signal that rests on the *absence* of something
+— no files at all, no save-like extensions beside an executable, no saves among the
+images — requires a complete walk. "I could not look properly" is not evidence about
+contents. A truncated walk, an unreadable directory, or a candidate beyond the
+per-game verification ceiling all keep the candidate.
+
+The one exception is a lower bound that is already conclusive: once more than
+`VERIFIER_MANY_FILES` files have been *seen*, truncation does not weaken the claim.
+Placing that check behind the completeness gate originally had it backwards — a
+directory of 420 files was rejected as a cache while one of 40,000 was not, because the
+larger walk truncated and truncation forbade rejecting. The more cache-like the
+directory, the more it got away with.
+
+**Save-like evidence protects a directory.** Both the install-directory and media-folder
+rejections require `save_like == 0`. A game that keeps saves beside its executable, or
+writes screenshots into its save folder, keeps its evidence and survives. Without those
+guards the install-directory rule alone would blank out the portable population that
+§7.4 exists to serve.
+
+### 9.4 Depth is bounded descent, not a crawl
+
+The verifier walks up to `VERIFIER_MAX_DEPTH` (2) levels below a candidate, breadth-first
+with an explicit queue rather than recursion, capped at `VERIFIER_MAX_ENTRIES` total.
+
+This is not the recursive root search §7 forbids, and the distinction is that the
+verifier never discovers a path to offer — it only characterises one it was handed.
+Depth is needed for correctness, not recall: `Terraria/` holds only `Players/` and
+`Worlds/`, so a depth-0 scan would find no files and wrongly call the directory empty.
+
+Engine-noise subdirectories (§7.3) are skipped rather than counted, so a `Cache/` folder
+inside a real save folder cannot drag the assessment towards "cache".
 
 ## 10. Write Witness
 

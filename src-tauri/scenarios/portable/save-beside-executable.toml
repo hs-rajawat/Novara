@@ -1,0 +1,46 @@
+version = 1
+
+[scenario]
+id = "save-beside-executable"
+title = "A portable release saves into a folder beside its executable"
+tags = ["portable", "install-local"]
+
+# The population this system exists to serve. Portable builds and scene releases
+# routinely keep saves next to the binary, and the OS roots never see them.
+#
+# Passing since task 1.16. The install directory is a per-game root the locator
+# synthesises from the game context — it is deliberately *not* added to
+# `RealFs::roots()`, which stays a description of the machine.
+#
+# Matching here is by conventional folder name (`saves`, `savegame`, ...) rather than
+# by similarity to the title: a portable release's saves sit in `saves/`, not in a
+# folder named after the game.
+[game]
+title = "Some Portable Game"
+install_dir = "{DRIVE}/Games/Some Portable Game"
+
+[[fs]]
+path = "{INSTALL}"
+files = [
+  { name = "Game.exe", size = 24000000 },
+  { name = "config.ini", size = 900 },
+]
+
+[[fs]]
+path = "{INSTALL}/saves"
+files = [
+  { name = "slot0.sav", size = 140000 },
+  { name = "slot1.sav", size = 138000 },
+]
+
+[expect]
+# Row 9: save-shaped contents in a folder inside the game's install directory. Suggested
+# at medium strength, not bind-eligible — §5.3 rates `InstallLocal` as moderate ("strong
+# for portable releases, weak elsewhere") and §6 gives it no binding row.
+#
+# This asserted `bind_eligible` before task 1.20, when the field meant "leads the list".
+suggested = ["{INSTALL}/saves"]
+rule = 9
+# The subdirectory, not the install root — binding the root would archive the
+# whole game.
+must_not_include = ["{INSTALL}"]

@@ -1,0 +1,31 @@
+version = 1
+
+[scenario]
+id = "skyrim-se-mygames-exact"
+title = "Skyrim Special Edition, exact folder name under My Games"
+tags = ["steam", "alias", "exact"]
+
+[game]
+title = "Skyrim Special Edition"
+steam_appid = "489830"
+
+[[fs]]
+path = "{MYGAMES}/Skyrim Special Edition"
+files = [
+  { name = "Save1_ABC.ess", size = 12000000 },
+  { name = "Save1_ABC.skse", size = 40000 },
+]
+
+[expect]
+# NOT bind-eligible, and that is the decision table working as designed. §6 allows only
+# rows 2–5 to bind, and every one of them needs a user's choice, an observed write, or a
+# curated KB entry. Name similarity plus save-shaped contents is not enough, however
+# exact the name — this fixture used to assert `bind_eligible` because before task 1.20
+# there was no decision table and the field meant "leads the list".
+#
+# Row 10: the folder name matches, contents are save-like but only one file is a
+# recognised save extension (`.ess`; the `.skse` co-save is not in the list), so row 9's
+# "two or more" is not met.
+suggested = ["{MYGAMES}/Skyrim Special Edition"]
+rule = 10
+explanation_contains = "Folder name matches"

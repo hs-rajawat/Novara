@@ -1,0 +1,24 @@
+version = 1
+
+[scenario]
+id = "witcher3-numeral-stripped"
+title = "The Witcher 3 saves under a folder without the numeral"
+tags = ["steam", "alias", "numeral-strip"]
+
+# A real convention: the folder drops the sequel number that the store title
+# carries. Pins the `strip_trailing_number` alias.
+[game]
+title = "The Witcher 3"
+steam_appid = "292030"
+
+[[fs]]
+path = "{MYGAMES}/The Witcher"
+files = [{ name = "AutoSave_0.sav", size = 8400000 }]
+
+[expect]
+# Row 10, suggested only. The `strip_trailing_number` alias matched this folder exactly,
+# so `NameMatch.similarity` is 1.0 — the evidence records how well the *alias* matched,
+# and names the alias separately so a reader can see it was a reduction of the title.
+# Nothing here can bind: §6 reserves that for observation or curation.
+suggested = ["{MYGAMES}/The Witcher"]
+rule = 10
