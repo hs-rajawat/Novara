@@ -19,11 +19,14 @@
 
 pub mod builtin;
 pub mod import;
+pub mod layout;
 pub mod template;
 pub mod validate;
 
 #[cfg(test)]
 mod corpus_tests;
+#[cfg(test)]
+mod organisation_tests;
 
 use std::path::PathBuf;
 
@@ -53,6 +56,8 @@ pub struct KbCandidate {
     /// curated claim would let the first conventional-looking folder bind — including a
     /// photo folder sitting under `{DOCUMENTS}/{TITLE}`.
     pub keyed: bool,
+    /// What kind of location this is -- see [layout].
+    pub layout: String,
 }
 
 /// The identities this game can be matched by, most specific first.
@@ -183,6 +188,7 @@ pub fn candidates(
                     note: entry.note.clone(),
                     priority: entry.priority,
                     keyed: entry.match_kind != "any",
+                    layout: entry.layout.clone(),
                 });
             }
         }
@@ -207,6 +213,7 @@ mod tests {
             match_value: "1".into(),
             platform: "windows".into(),
             role: "saves".into(),
+            layout: layout::OFFICIAL.into(),
             path_template: template.into(),
             glob: None,
             priority: 100,

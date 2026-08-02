@@ -133,6 +133,7 @@ mod tests {
             match_value: "367520".into(),
             platform: "windows".into(),
             role: "saves".into(),
+            layout: crate::saves::kb::layout::OFFICIAL.into(),
             path_template: "{MYGAMES}/{TITLE}".into(),
             glob: None,
             priority: 100,

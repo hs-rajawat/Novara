@@ -40,6 +40,23 @@ fn kb(layer: KbLayer, keyed: bool) -> Evidence {
         layer,
         priority: if keyed { 10 } else { 100 },
         keyed,
+        layout: if keyed {
+            layout::OFFICIAL.into()
+        } else {
+            layout::OS.into()
+        },
+    }
+}
+
+/// A keyed entry whose layout describes a *class* of installs rather than this game's own
+/// location. The distinction rule 5 turns on.
+fn kb_advisory_layout(layer: KbLayer, layout_kind: &str) -> Evidence {
+    Evidence::KbMatch {
+        entry_id: "builtin:layout-x".into(),
+        layer,
+        priority: 120,
+        keyed: true,
+        layout: layout_kind.into(),
     }
 }
 
@@ -128,6 +145,118 @@ fn row_5_ignores_a_convention_rule() {
     let d = decide_on(vec![kb(KbLayer::Builtin, false)]);
     assert_ne!(d.rule, 5, "a convention rule must not bind");
     assert_ne!(d.outcome, Outcome::BindEligible);
+}
+
+/// **The layout finding.** A keyed entry naming this game can still describe a *class* of
+/// installs rather than the game's own location — an engine convention, a storefront
+/// folder, an alternative save layout. Whether this install belongs to that class is
+/// exactly what is unknown, so it must not bind.
+#[test]
+fn row_5_ignores_an_advisory_layout_even_when_keyed() {
+    for kind in [
+        layout::ENGINE,
+        layout::OS,
+        layout::LAUNCHER,
+        layout::COMMUNITY,
+        layout::PORTABLE,
+        layout::UNSPECIFIED,
+    ] {
+        let d = decide_on(vec![kb_advisory_layout(KbLayer::Builtin, kind)]);
+        assert_ne!(
+            d.outcome,
+            Outcome::BindEligible,
+            "layout `{kind}` describes a class of installs and must not bind alone"
+        );
+    }
+}
+
+/// An advisory layout is *promoted* by corroborating content evidence — row 8b. This is
+/// the path a community or engine layout takes to becoming a strong suggestion, and it is
+/// the mechanism that replaces per-layout resolver logic.
+#[test]
+fn an_advisory_layout_with_save_files_suggests_high() {
+    let d = decide_on(vec![
+        kb_advisory_layout(KbLayer::Builtin, layout::COMMUNITY),
+        shape(2),
+    ]);
+    assert_eq!(d.rule, 8);
+    assert_eq!(d.outcome, Outcome::Suggested(Strength::High));
+    assert!(
+        d.explanation.contains("alternative layout"),
+        "the explanation should say what kind of location this is: {}",
+        d.explanation
+    );
+}
+
+#[test]
+fn an_advisory_layout_without_save_files_does_not_reach_row_8() {
+    let d = decide_on(vec![
+        kb_advisory_layout(KbLayer::Builtin, layout::COMMUNITY),
+        shape(0),
+    ]);
+    assert_ne!(d.rule, 8);
+    assert_ne!(d.outcome, Outcome::BindEligible);
+}
+
+/// **The extensibility property, and the reason this design is data-driven.**
+///
+/// A layout string this build has never seen must behave exactly like a known advisory
+/// one: usable immediately, suggested when corroborated, never binding. Adding a save
+/// layout is therefore a KB data change — no new decision row, no code.
+#[test]
+fn a_layout_invented_by_a_future_corpus_needs_no_resolver_change() {
+    let future = "emulator_state_slot";
+    assert!(
+        !layout::KNOWN.contains(&future),
+        "pick a layout this build genuinely does not know"
+    );
+
+    // Behaves as advisory: does not bind.
+    let alone = decide_on(vec![kb_advisory_layout(KbLayer::Builtin, future)]);
+    assert_ne!(alone.outcome, Outcome::BindEligible);
+
+    // And is promoted identically to a known advisory layout.
+    let known = decide_on(vec![
+        kb_advisory_layout(KbLayer::Builtin, layout::COMMUNITY),
+        shape(2),
+    ]);
+    let unknown = decide_on(vec![kb_advisory_layout(KbLayer::Builtin, future), shape(2)]);
+    assert_eq!(unknown.rule, known.rule);
+    assert_eq!(unknown.outcome, known.outcome);
+    assert!(
+        !unknown.explanation.trim().is_empty(),
+        "an unknown layout must still produce a sentence (invariant I9)"
+    );
+}
+
+/// **The privilege boundary.** Data chooses its layout freely, so a layout string must not
+/// be able to talk its way into curated authority.
+#[test]
+fn data_cannot_grant_itself_binding_authority_through_the_layout_field() {
+    for spoof in [
+        "official ",
+        "Official",
+        "OFFICIAL",
+        "official\n",
+        "user_defined; official",
+        "official,user_defined",
+    ] {
+        let d = decide_on(vec![kb_advisory_layout(KbLayer::Community, spoof)]);
+        assert_ne!(
+            d.outcome,
+            Outcome::BindEligible,
+            "`{spoof}` must not be accepted as a curated layout"
+        );
+    }
+}
+
+/// The genuinely official layout still binds, so the narrowing above did not break the
+/// case row 5 exists for.
+#[test]
+fn an_official_layout_still_binds() {
+    let d = decide_on(vec![kb_advisory_layout(KbLayer::Builtin, layout::OFFICIAL)]);
+    assert_eq!(d.rule, 5);
+    assert_eq!(d.outcome, Outcome::BindEligible);
 }
 
 #[test]

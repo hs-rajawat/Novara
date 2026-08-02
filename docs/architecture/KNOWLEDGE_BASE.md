@@ -163,6 +163,135 @@ Most specific to least:
 but ships the original executable. The executable name is the most stable identity
 a manually installed game has, and NOVARA already records it per installation.
 
+### 4.0 A game has many save layouts, not one
+
+A single game can legitimately keep saves in several places, and the entries describing
+them are **not equivalent claims**. `save_kb_entries` has no `UNIQUE(match_kind,
+match_value)`, so N entries may match one game and `kb::candidates` expands all of them —
+that capability existed from the start. What was missing was *what kind of location* each
+entry describes.
+
+| `layout` | The claim it makes | Authority |
+|---|---|---|
+| `official` | The game as shipped writes here | **Curated** |
+| `user_defined` | The user told us | **Curated** |
+| `engine` | Games on this engine write here | Advisory |
+| `os` | This is a conventional Windows location | Advisory |
+| `launcher` | This storefront keeps save data here | Advisory |
+| `portable` | Self-contained installs write beside the executable | Advisory |
+| `community` | Installs using a save-redirection layer write here | Advisory |
+
+**Advisory means the entry describes a *class* of installs.** Whether *this* install
+belongs to that class is exactly what is unknown, so an advisory layout suggests and is
+promoted by content, mtime correlation or a write witness. Only a curated layout can bind
+alone.
+
+#### Why this is a second axis and not a variant of `layer`
+
+`layer` records **who authored an entry** — provenance. `layout` records **what sort of
+location it names**. They are orthogonal: a shipped built-in entry can perfectly well
+describe a community layout.
+
+Before the distinction existed, the only proxy for layout was `match_kind != 'any'`
+("keyed"), which is a *matching mechanism*. The consequence was concrete: a community
+layout entered as a keyed built-in entry satisfied decision table row 5 and bound with
+exactly the authority of the official path. The original schema anticipated this and parked
+it in free text — the `note` column's example comment is `'Goldberg builds only'`.
+
+Making `layout` a fourth *layer* would have been worse: a shipped entry describing a
+community layout would have to misreport who wrote it, and layer-scoped replacement
+(invariant I7) would break.
+
+#### Adding a layout is data; granting it authority is code
+
+`layout` has **no CHECK constraint**. A corpus update or a community contribution may
+introduce a new layout without a migration and without a Rust change. `saves::kb::layout`
+classifies known values and returns `Advisory` for everything else, so an unrecognised
+layout is usable immediately and safe by construction — the failure mode is
+under-trusting, never over-trusting.
+
+That asymmetry is the security boundary:
+
+* `layer` is set by the **loader**, never by the payload (`replace_kb_layer` takes it as a
+  parameter; `add_user_entry` hardcodes it), so an entry cannot choose its own provenance.
+* `layout` is chosen freely by the data but only *classified* in code.
+* Promoting a layout to `Curated` is one line in `layout::CURATED_LAYOUTS` and a deliberate
+  review, which is the right weight for a privilege decision.
+
+`resolver` is expressed over the authority tier, never over a layout name, so a new layout
+flows through the existing decision rows with no new row and no code change. That is what
+makes "support another save layout" a data task.
+
+#### Community layouts are conventions, not per-game entries
+
+Some installs route saves through a redirection layer that keeps them under a shared root.
+Those roots are **directories** — filesystem facts. Nothing in the corpus identifies or
+attributes whoever produced a layer, and NOVARA has no business doing so; the only question
+is where a user's saves are so they can be backed up.
+
+They are `match_kind = 'any'`, because a shared root is a convention *of the layer* rather
+than a fact about one game. **One entry covers every game that layer wraps** — the
+difference between a corpus that scales and one needing a row per game per layer.
+
+Each is keyed *inside* the path by `{TITLE}` or `{STEAM_APPID}`. This is not optional: a
+shared multi-game root keyed by `{WILDCARD}` would fan out across every subfolder, and
+every game would then claim every other game's saves. The path variable is what keeps a
+library-wide rule game-specific.
+
+### 4.1 How the corpus is organised on disk
+
+The built-in corpus is **many small files**, not one. `build.rs` merges
+`data/kb/**/*.json` into a single document in `OUT_DIR`, which `saves::kb::builtin`
+embeds with `include_str!`. Runtime cost is unchanged: one embedded string, one parse,
+no directory walking at startup.
+
+```
+data/kb/
+  manifest.json                       corpus version
+  README.md                           the contributor guide
+  official/<letter>.json              one game's real save location
+  engine/conventions.json             engine defaults
+  os/windows.json                     Windows known folders
+  launcher/                           storefront locations (empty — see §9)
+  community/redirection-roots.json    shared redirection roots
+  portable/install-dir.json           beside the executable
+```
+
+**A directory is a third concept, and it is deliberately the weakest of the three:**
+
+| Concept | Meaning | Reaches the database? | Affects behaviour? |
+|---|---|---|---|
+| `layer` | who authored the entry | **yes** | yes — provenance |
+| `layout` | what kind of location | **yes** | yes — authority |
+| directory | how the corpus is organised | **no** | **no** |
+
+The directory has no effect on matching, confidence, authority, evidence or the decision
+table, and it has no representation in the schema. `the_category_directory_has_no_runtime_effect`
+asserts that no stored column can carry a corpus path, and
+`identical_entries_from_different_files_decide_identically` asserts the behavioural half.
+
+**Layout is declared per file, not inferred from the path.** If the directory determined it,
+moving a file would silently change whether its entries can bind.
+`the_declared_layout_matches_the_directory` catches misfiling without the path ever becoming
+load-bearing.
+
+Three properties worth knowing:
+
+* **Adding an entry is dropping a file.** No Rust change, no registration list — a shared
+  list would reintroduce the single edit point this layout exists to remove.
+* **Granularity is a data decision.** The build walk is recursive, so splitting
+  `official/h.json` into `official/h/hollow-knight.json` later needs no code change.
+* **Merge order is sorted.** Load-bearing: startup idempotence compares a SHA-256 over the
+  merged bytes, so unstable ordering would reload the corpus on every launch.
+
+The build fails on unparseable JSON, a missing `layout`, a missing required field or a
+duplicate id — the last checked across the whole corpus rather than per file. Deep validation
+(template anchoring, traversal refusal, key normalisation) stays in `saves::kb::validate`,
+because it needs the crate the build script is building. Build time catches "the corpus is
+malformed"; test time catches "an entry is wrong".
+
+See [`data/kb/README.md`](../../src-tauri/data/kb/README.md) for the contributor guide.
+
 ### 4.1 Normalisation rules for match values
 
 `match_value` must be stored **pre-normalised** for the two derived kinds, or a

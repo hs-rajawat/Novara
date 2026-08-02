@@ -26,6 +26,7 @@
 //!   `suggested` or `rejected`.
 
 use super::evidence::{Evidence, EvidenceSet, KbLayer};
+use super::kb::layout;
 
 /// How strongly a suggestion is offered. Ordering hint for the UI, not an outcome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +119,37 @@ fn keyed_kb_match(set: &EvidenceSet, layer: KbLayer) -> bool {
     })
 }
 
+/// A keyed match from `layer` whose **layout** is trusted to settle the question alone.
+///
+/// Expressed over [`layout::Authority`], never over layout names. That is what makes a
+/// new save layout a data change: an unrecognised layout classifies as
+/// [`layout::Authority::Advisory`] and flows through the suggestion rows below without a
+/// new decision row and without touching this file.
+fn curated_kb_match(set: &EvidenceSet, layer: KbLayer) -> bool {
+    set.has(|e| match e {
+        Evidence::KbMatch {
+            layer: l,
+            keyed: true,
+            layout,
+            ..
+        } => *l == layer && layout::authority(layout) == layout::Authority::Curated,
+        _ => false,
+    })
+}
+
+/// The best layout phrase available, for an explanation that says *why*.
+fn layout_phrase(set: &EvidenceSet) -> Option<String> {
+    set.items.iter().find_map(|e| match e {
+        // `describe` falls back to the raw layout string for a value this build does not
+        // recognise. Only a reviewed phrase belongs in a sentence shown to a user, so an
+        // unknown layout yields `None` and the caller uses neutral wording.
+        Evidence::KbMatch { layout, .. } if layout::KNOWN.contains(&layout.as_str()) => {
+            Some(layout::describe(layout).to_string())
+        }
+        _ => None,
+    })
+}
+
 /// Apply the table.
 ///
 /// `path_exists` is the one input that is not evidence, because rows 5 and 6 are
@@ -174,11 +206,19 @@ pub fn decide(set: &EvidenceSet, path_exists: bool) -> Decision {
 
     // 5 — a curated built-in entry for this game, and the path is really there.
     //
-    // `keyed` is load-bearing. A convention rule matches every game in the library, so
-    // treating it as a curated claim would bind the first conventional-looking folder
-    // that existed — including a photo folder under `{DOCUMENTS}/{TITLE}`. §5.3 rates
-    // built-in KB evidence as strong; that rating describes curated entries only.
-    if keyed_kb_match(set, KbLayer::Builtin) && path_exists {
+    // Two conditions beyond "the KB matched", and both are load-bearing.
+    //
+    // `keyed`: a convention rule matches every game in the library, so treating it as a
+    // curated claim would bind the first conventional-looking folder that existed —
+    // including a photo folder under `{DOCUMENTS}/{TITLE}`.
+    //
+    // Curated *layout*: an entry may describe the official location, or it may describe
+    // an engine convention, a storefront's folder, or an alternative layout used by a
+    // class of installs. Only the first is a statement about this game's real save
+    // location. The others are statements about a class, and whether this install belongs
+    // to that class is exactly what is unknown — so they suggest and are promoted by
+    // corroborating evidence at rule 8b below.
+    if curated_kb_match(set, KbLayer::Builtin) && path_exists {
         return decided(
             5,
             Outcome::BindEligible,
@@ -236,6 +276,34 @@ pub fn decide(set: &EvidenceSet, path_exists: bool) -> Decision {
             8,
             Outcome::Suggested(Strength::High),
             "Community-reported location, contains save files.",
+            false,
+        );
+    }
+
+    // 8b — a keyed entry whose layout is advisory, corroborated by contents.
+    //
+    // **The row that makes new save layouts a data change.** An entry naming this game
+    // but describing a *class* of installs — an engine convention, a storefront folder,
+    // an alternative layout — lands here rather than at rule 5. It suggests strongly, and
+    // the content evidence is what raises it above a bare name match.
+    //
+    // Nothing in this row names a layout. A layout introduced by a future corpus flows
+    // through it automatically, which is the whole point: supporting another save layout
+    // means adding KB data, not adding a rule.
+    if saves > 0
+        && set.has(|e| {
+            matches!(
+                e,
+                Evidence::KbMatch { keyed: true, layout, .. }
+                    if layout::authority(layout) == layout::Authority::Advisory
+            )
+        })
+    {
+        let phrase = layout_phrase(set).unwrap_or_else(|| "a known save location".to_string());
+        return decided(
+            8,
+            Outcome::Suggested(Strength::High),
+            &format!("Contains save files, in {phrase} for this game."),
             false,
         );
     }

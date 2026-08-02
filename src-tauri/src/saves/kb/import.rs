@@ -70,6 +70,11 @@ pub async fn add_user_entry(db: &Db, input: &UserEntryInput) -> AppResult<String
         match_value: input.match_value.trim().to_string(),
         platform: "windows".into(),
         role: input.role.clone().unwrap_or_else(|| "saves".into()),
+        // A location the user typed in is a user-defined layout by definition, and that
+        // is what earns it curated authority in the decision table. The caller does not
+        // get to choose -- a layout an untrusted payload could set would be a way to
+        // grant itself binding power.
+        layout: super::layout::USER_DEFINED.into(),
         path_template: input.path_template.trim().to_string(),
         glob: None,
         // Below the built-in curated band (10) so a user entry wins outright.

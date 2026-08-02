@@ -114,6 +114,7 @@ async fn seed_kb(db: &crate::db::Db, scenario: &Scenario) -> Result<(), String> 
             match_value: k.match_value.clone(),
             platform: "windows".into(),
             role: k.role.clone(),
+            layout: k.layout.clone(),
             path_template: k.path_template.clone(),
             glob: None,
             // Fixture entries are curated by definition; a fixture that wants to test a
@@ -348,6 +349,17 @@ async fn negative() {
 #[tokio::test]
 async fn knowledge_base() {
     run_category("kb").await;
+}
+
+/// One game with several real save locations — after a store or edition change, for example.
+///
+/// Currently every fixture here carries `[[sessions]]` and is therefore *skipped* until the
+/// Write Witness lands: Phase 1 can find the locations but cannot tell which is live, and
+/// guessing is what §10.1.1 exists to forbid. The category is registered now so the cases are
+/// carried in the corpus rather than in a issue tracker.
+#[tokio::test]
+async fn multi_path() {
+    run_category("multi-path").await;
 }
 
 /// The format itself must reject a fixture it cannot honour. A Phase 2 fixture is

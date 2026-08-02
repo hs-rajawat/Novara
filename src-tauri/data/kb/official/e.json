@@ -1,0 +1,32 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'e'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:elden-ring",
+      "match_kind": "title_norm",
+      "match_value": "eldenring",
+      "path_template": "{APPDATA}/EldenRing/{WILDCARD}",
+      "priority": 10,
+      "note": "Per-account directory named after the Steam id",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:europauniversalisiv",
+      "match_kind": "title_norm",
+      "match_value": "europauniversalisiv",
+      "path_template": "{DOCUMENTS}/Paradox Interactive/Europa Universalis IV/save games",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    }
+  ]
+}

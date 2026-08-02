@@ -43,3 +43,7 @@ pub mod scenario;
 /// default — see the module docs for why it is not part of the normal suite.
 #[cfg(test)]
 mod real_library_tests;
+
+/// Phase 1 exit-gate invariants (I2, I3, I9, I10) and decision-row coverage.
+#[cfg(test)]
+mod invariant_tests;

@@ -1,0 +1,138 @@
+{
+  "layout": "community",
+  "_about": [
+    "Community layouts: shared roots used by save-redirection layers.",
+    "",
+    "These are DIRECTORIES, which are filesystem facts. Nothing here identifies or",
+    "attributes whoever produced a layer, and NOVARA has no business doing so; the only",
+    "question is where a user's saves are so they can be backed up.",
+    "",
+    "match_kind 'any' because a shared root is a convention of the layer, not a fact",
+    "about one game, so ONE entry covers every game that layer wraps.",
+    "",
+    "CRITICAL: each is keyed INSIDE the path by {TITLE} or {STEAM_APPID}. A shared",
+    "multi-game root keyed only by {WILDCARD} would fan out across every subfolder, and",
+    "every game would then claim every other game's saves.",
+    "",
+    "TOOL-AGNOSTIC BY DESIGN. Where a layer inserts its own name between the shared root",
+    "and the per-game folder, that segment is a {WILDCARD} rather than a literal. One rule",
+    "then covers every tool using that shape -- including tools that do not exist yet --",
+    "and the corpus never becomes a list of named tools. The {STEAM_APPID} leaf is what",
+    "keeps it game-specific.",
+    "",
+    "PAIRED ENTRIES. Several layers keep the actual save payload in a 'remote' subfolder",
+    "alongside metadata files. Both are listed: the precise 'remote' path at a lower",
+    "priority number so it wins when present, and the parent as a fallback that still",
+    "captures everything if the layout differs. Same pattern as the Rockstar entries.",
+    "",
+    "VERIFIED against a real machine during Track G. Corrections made as a result are",
+    "noted per entry -- two earlier guesses were wrong about both the anchor and the leaf,",
+    "which is exactly why entries carry provenance."
+  ],
+  "entries": [
+    {
+      "id": "builtin:layout-appdata-dot1911-profile",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/.1911/{TITLE}/profile",
+      "priority": 118,
+      "note": "Verified on a real install: the payload sits in a profile subfolder",
+      "source_ref": "community-layout:verified-track-g"
+    },
+    {
+      "id": "builtin:layout-appdata-dot1911",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/.1911/{TITLE}",
+      "priority": 120,
+      "note": "Parent fallback. Corrected in Track G: this root is under APPDATA, not LOCALAPPDATA",
+      "source_ref": "community-layout:verified-track-g"
+    },
+    {
+      "id": "builtin:layout-gse-saves-appid-remote",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/GSE Saves/{STEAM_APPID}/remote",
+      "priority": 118,
+      "note": "Current folder name for this emulation layer, verified on a real install",
+      "source_ref": "community-layout:verified-track-g"
+    },
+    {
+      "id": "builtin:layout-gse-saves-appid",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/GSE Saves/{STEAM_APPID}",
+      "priority": 120,
+      "note": "Parent fallback: also holds playtime and achievement state",
+      "source_ref": "community-layout:verified-track-g"
+    },
+    {
+      "id": "builtin:layout-gse-saves-title",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/GSE Saves/{TITLE}",
+      "priority": 122,
+      "note": "Same root, keyed by title where no app id is known",
+      "source_ref": "community-layout:verified-track-g"
+    },
+    {
+      "id": "builtin:layout-steamemu-appdata-appid",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/Goldberg SteamEmu Saves/{STEAM_APPID}",
+      "priority": 124,
+      "note": "Older folder name for the same layer; kept for installs that predate the rename",
+      "source_ref": "community-layout:observed"
+    },
+    {
+      "id": "builtin:layout-steamemu-appdata-title",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/Goldberg SteamEmu Saves/{TITLE}",
+      "priority": 124,
+      "note": "Older folder name, keyed by title",
+      "source_ref": "community-layout:observed"
+    },
+    {
+      "id": "builtin:layout-appdata-steam-tool-appid-remote",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/Steam/{WILDCARD}/{STEAM_APPID}/remote",
+      "priority": 118,
+      "note": "Tool-agnostic: the wildcard is whatever layer created the folder",
+      "source_ref": "community-layout:verified-track-g"
+    },
+    {
+      "id": "builtin:layout-appdata-steam-tool-appid",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/Steam/{WILDCARD}/{STEAM_APPID}",
+      "priority": 120,
+      "note": "Parent fallback for the same shape",
+      "source_ref": "community-layout:verified-track-g"
+    },
+    {
+      "id": "builtin:layout-public-steam-tool-appid-remote",
+      "match_kind": "any",
+      "path_template": "{PUBLIC}/Documents/Steam/{WILDCARD}/{STEAM_APPID}/remote",
+      "priority": 118,
+      "note": "All-users variant of the same shape, verified on a real install",
+      "source_ref": "community-layout:verified-track-g"
+    },
+    {
+      "id": "builtin:layout-public-steam-tool-appid",
+      "match_kind": "any",
+      "path_template": "{PUBLIC}/Documents/Steam/{WILDCARD}/{STEAM_APPID}",
+      "priority": 120,
+      "note": "Parent fallback for the all-users shape",
+      "source_ref": "community-layout:verified-track-g"
+    },
+    {
+      "id": "builtin:layout-appdata-steam-appid",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/Steam/{STEAM_APPID}",
+      "priority": 126,
+      "note": "Some layers omit the tool folder and use the app id directly",
+      "source_ref": "community-layout:observed"
+    },
+    {
+      "id": "builtin:layout-public-steam-appid",
+      "match_kind": "any",
+      "path_template": "{PUBLIC}/Documents/Steam/{STEAM_APPID}",
+      "priority": 126,
+      "note": "All-users variant with no tool folder",
+      "source_ref": "community-layout:observed"
+    }
+  ]
+}

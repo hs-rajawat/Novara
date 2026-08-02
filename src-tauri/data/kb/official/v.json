@@ -1,0 +1,40 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'v'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:valheim",
+      "match_kind": "title_norm",
+      "match_value": "valheim",
+      "path_template": "{LOCALLOW}/IronGate/Valheim",
+      "priority": 10,
+      "note": "Parent folder; worlds and characters are separate subfolders",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:vampiresurvivors",
+      "match_kind": "title_norm",
+      "match_value": "vampiresurvivors",
+      "path_template": "{LOCALLOW}/poncle/Vampire Survivors",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:vrising",
+      "match_kind": "title_norm",
+      "match_value": "vrising",
+      "path_template": "{LOCALLOW}/Stunlock Studios/VRising",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    }
+  ]
+}

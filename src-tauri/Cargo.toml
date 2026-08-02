@@ -11,6 +11,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
+# Merging the built-in knowledge base from data/kb/**/*.json. Already a regular
+# dependency, so this adds no new crate to the tree.
+serde_json = "1"
 
 [dependencies]
 # `protocol-asset` compiles in the `asset:` custom protocol used to render

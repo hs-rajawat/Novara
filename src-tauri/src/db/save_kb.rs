@@ -23,6 +23,8 @@ pub struct NewKbEntry {
     pub match_value: String,
     pub platform: String,
     pub role: String,
+    /// See crate::saves::kb::layout. Empty is normalised to unspecified.
+    pub layout: String,
     pub path_template: String,
     pub glob: Option<String>,
     pub priority: i64,
@@ -44,6 +46,20 @@ impl MatchKey {
             kind: kind.to_string(),
             value: value.to_string(),
         }
+    }
+}
+
+/// Store `unspecified` rather than an empty layout.
+///
+/// An empty string would be indistinguishable from "not classified" while sorting and
+/// comparing differently, and `layout::authority` would classify both the same way. One
+/// spelling for one meaning.
+fn normalised_layout(layout: &str) -> &str {
+    let trimmed = layout.trim();
+    if trimmed.is_empty() {
+        crate::saves::kb::layout::UNSPECIFIED
+    } else {
+        trimmed
     }
 }
 
@@ -75,10 +91,10 @@ impl Db {
             sqlx::query(
                 r#"
                 INSERT INTO save_kb_entries
-                  (id, layer, match_kind, match_value, platform, role,
+                  (id, layer, match_kind, match_value, platform, role, layout,
                    path_template, glob, priority, note, source_ref,
                    kb_version, created_at)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                 "#,
             )
             .bind(&e.id)
@@ -87,6 +103,7 @@ impl Db {
             .bind(&e.match_value)
             .bind(&e.platform)
             .bind(&e.role)
+            .bind(normalised_layout(&e.layout))
             .bind(&e.path_template)
             .bind(e.glob.as_deref())
             .bind(e.priority)
@@ -132,10 +149,10 @@ impl Db {
         sqlx::query(
             r#"
             INSERT INTO save_kb_entries
-              (id, layer, match_kind, match_value, platform, role,
+              (id, layer, match_kind, match_value, platform, role, layout,
                path_template, glob, priority, note, source_ref,
                kb_version, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'user', ?12)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'user', ?13)
             "#,
         )
         .bind(&entry.id)
@@ -144,6 +161,7 @@ impl Db {
         .bind(&entry.match_value)
         .bind(&entry.platform)
         .bind(&entry.role)
+        .bind(normalised_layout(&entry.layout))
         .bind(&entry.path_template)
         .bind(entry.glob.as_deref())
         .bind(entry.priority)
@@ -255,6 +273,7 @@ mod tests {
             match_value: value.into(),
             platform: "windows".into(),
             role: "saves".into(),
+            layout: crate::saves::kb::layout::OFFICIAL.into(),
             path_template: template.into(),
             glob: None,
             priority: 100,

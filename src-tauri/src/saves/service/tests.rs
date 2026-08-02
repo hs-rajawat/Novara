@@ -461,3 +461,91 @@ async fn the_runtime_agrees_with_the_pipeline_it_wraps() {
         .collect();
     assert_eq!(a, b, "the runtime diverged from the pipeline");
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// saves_get_state / saves_reject
+// ─────────────────────────────────────────────────────────────────────────
+
+/// The read that `saves_get_state` wraps: persisted candidates plus the last attempt.
+#[tokio::test]
+async fn save_state_returns_persisted_candidates_and_the_last_attempt() {
+    let db = test_db().await;
+    let id = seed_game(&db, "Test Game").await;
+    let (fs, dir) = world_with_saves("Test Game");
+
+    detect_and_persist(&db, &fs, &id, Trigger::User).await.unwrap();
+
+    let state = save_state(&db, &id).await.unwrap();
+    let hit = state
+        .candidates
+        .iter()
+        .find(|c| c.path.replace('\\', "/") == dir)
+        .expect("the detected folder should be readable back");
+    assert_eq!(hit.status, "suggested");
+    assert!(hit.decided_by_rule.is_some(), "the deciding rule must be readable");
+    assert!(hit.explanation.as_deref().is_some_and(|e| !e.trim().is_empty()));
+
+    let scan = state.last_scan.expect("the attempt should be recorded");
+    assert_eq!(scan.outcome, "suggested");
+}
+
+/// A game that has never been scanned is a valid state, not an error.
+#[tokio::test]
+async fn save_state_for_an_unscanned_game_is_empty_rather_than_an_error() {
+    let db = test_db().await;
+    let id = seed_game(&db, "Never Scanned").await;
+
+    let state = save_state(&db, &id).await.unwrap();
+    assert!(state.candidates.is_empty());
+    assert!(state.last_scan.is_none());
+}
+
+/// Reading state must not run detection — that is `detect_save_paths`.
+#[tokio::test]
+async fn save_state_does_not_trigger_detection() {
+    let db = test_db().await;
+    let id = seed_game(&db, "Test Game").await;
+
+    let state = save_state(&db, &id).await.unwrap();
+    assert!(state.candidates.is_empty(), "reading state must not scan");
+    assert!(db.scan_attempt(&id).await.unwrap().is_none());
+}
+
+/// The write that `saves_reject` wraps.
+#[tokio::test]
+async fn rejecting_a_candidate_marks_it_rejected() {
+    let db = test_db().await;
+    let id = seed_game(&db, "Test Game").await;
+    let (fs, dir) = world_with_saves("Test Game");
+    detect_and_persist(&db, &fs, &id, Trigger::User).await.unwrap();
+
+    let candidate = db
+        .list_save_candidates(&id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|c| c.path.replace('\\', "/") == dir)
+        .expect("a candidate to reject");
+    assert_ne!(candidate.status, "rejected");
+
+    reject_candidate(&db, candidate.id).await.unwrap();
+
+    let after = db.get_save_candidate(candidate.id).await.unwrap().unwrap();
+    assert_eq!(after.status, "rejected");
+    assert!(
+        after.explanation.as_deref().is_some_and(|e| !e.trim().is_empty()),
+        "a rejection must still carry a sentence"
+    );
+}
+
+/// An unknown id reports `NotFound` rather than silently succeeding: the underlying UPDATE
+/// matches nothing and would otherwise look like success.
+#[tokio::test]
+async fn rejecting_an_unknown_candidate_is_not_found() {
+    let db = test_db().await;
+    let err = reject_candidate(&db, 999_999).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::AppError::NotFound(_)),
+        "got {err:?}"
+    );
+}

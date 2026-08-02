@@ -339,6 +339,27 @@ would produce files that look like coverage while asserting nothing — worse th
 having none. Giving the runner a `Db` and seeding `[[kb]]` belongs with task 1.22,
 where the resolver is wired into the pipeline.
 
+### 5.2 One game, several real save locations
+
+`multi-path/` holds cases where a game legitimately has **more than one** save directory —
+the normal outcome of changing store or edition. Both real libraries validated so far showed
+it (Dying Light and Red Dead Redemption 2 each had a current location plus one left behind by
+an earlier install).
+
+These fixtures carry `[[sessions]]` and are therefore **skipped until Phase 2**, because
+Phase 1 can find the locations but cannot tell which is live — every signal available to it
+describes them equally well, and an mtime comparison would be a guess that a cloud sync or
+antivirus scan can defeat. See [`GAME_SAVE_DETECTION.md` §10.1.1](../architecture/GAME_SAVE_DETECTION.md).
+
+Two rules for anything added here:
+
+* **Never assert that a historical location is absent.** It may hold the only copy of a long
+  save, and a user migrating stores is exactly who needs it. Reducing detections loses
+  information that cannot be recovered.
+* **Assert the *rule*, not just the path.** The point of these cases is that the witnessed
+  location binds via row 3 or 4 while the others remain suggestions — an outcome-only
+  assertion would pass for the wrong reason.
+
 ## 6. Definition of done for Phase 1 and Phase 2
 
 | Phase | Gate |

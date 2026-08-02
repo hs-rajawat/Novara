@@ -66,6 +66,16 @@ and content verification. Ships as "NOVARA finds your saves properly."
 
 **Purpose:** the differentiator. Detect saves by observing writes during a session.
 
+**Primary use case, confirmed by real-library validation:** telling apart several *real*
+save locations for one game. A user who changes store or edition accumulates directories —
+both libraries validated in Phase 1 showed it (Dying Light and Red Dead Redemption 2 each
+had a current location plus one left behind by an earlier install). Phase 1 correctly reports
+all of them and **must not be changed to suppress any**; it simply cannot tell which is live,
+because name, KB and content shape describe them equally well and an mtime comparison is a
+guess a cloud sync can defeat. Observation is the only thing that settles it, which makes
+this the clearest argument for the whole subsystem. See
+[§10.1.1](./GAME_SAVE_DETECTION.md) and `scenarios/multi-path/`.
+
 **2a — mtime sweep.** Directory mtimes at session start and end. No watchers.
 
 **2b — filesystem watchers.** `notify`-based, finer-grained, falls back to 2a.
@@ -74,10 +84,12 @@ and content verification. Ships as "NOVARA finds your saves properly."
 |---|---|
 | Architecture | `witness.rs`, hooked to existing `session_started`/`session_ended`. Decision table v2 adds rules 3, 4, 6. |
 | Database | `save_witness_events` (+ pruning) |
-| Backend | Session hooks; evidence ingestion |
-| Frontend | Evidence copy: "changed while you were playing" |
-| Risks | Overlapping sessions mis-attributing writes (require two sessions, §10.3). Watcher instability in 2b — 2a remains the fallback. Descriptor exhaustion. |
-| Testing | Simulated session windows over a temp tree; assert correct candidate promotion. Concurrent-session ambiguity is an explicit test case. |
+| Backend | Session hooks; evidence ingestion. Classify locations **active / historical / unused** — derived from evidence, never from a heuristic, and presentation only: a historical location stays bind-eligible if its evidence says so. |
+| Frontend | Evidence copy: "changed while you were playing". Group a game's locations by class so a migrating user can see which is current *and* still reach the old one. |
+| Extension point | User states (`Imported`, `Pinned`, …) are a **second, orthogonal axis** above the evidence model, not more values of the observation class — a location can be `Historical` *and* `Pinned`. Deferred to Phase 2/3; see [§10.1.2](./GAME_SAVE_DETECTION.md) for the test that decides whether a proposed state is evidence or presentation. |
+| Risks | Overlapping sessions mis-attributing writes (require two sessions, §10.3). Watcher instability in 2b — 2a remains the fallback. Descriptor exhaustion. **Classification becoming authority** — if recency starts deciding outcomes, Phase 1's decisions stop being reproducible from evidence. **User state leaking into `save_candidates.status`** — that column belongs to the decision table alone. |
+| Open | `Evidence::WriteWitness` may need an `at` field. Distinguishing recent from earlier sessions otherwise requires joining `play_sessions`, breaking §6's "reproducible from the evidence set alone". `UserConfirmed { at }` sets the precedent; the enum is version-tolerant so adding it later is safe. |
+| Testing | Simulated session windows over a temp tree; assert correct candidate promotion. Concurrent-session ambiguity is an explicit test case. `scenarios/multi-path/` already holds a store-migration fixture, skipped until this lands. |
 | Complexity | **L** (2a is **M** alone) |
 
 Ship 2a early. It is most of the value at a fraction of the risk.

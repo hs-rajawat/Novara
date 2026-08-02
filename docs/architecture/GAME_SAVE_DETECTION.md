@@ -249,6 +249,48 @@ is explicit rather than emergent. Rules 3–5 are the only paths to an automatic
 binding, and every one of them requires either observation or curated data — never
 name similarity alone.
 
+### 6.1 Rows added and narrowed since the original table
+
+Two changes, both driven by real findings rather than tuning.
+
+**Row 6 — contradicted contents (added, task 1.17).** Row 10 would otherwise suggest a
+folder named exactly after the game containing nothing but screenshots. Placed *below* the
+observation- and curation-backed bind rows on purpose: a write witness or a curated entry is
+direct knowledge and must not be overruled by a content heuristic. ADR-0002 sanctions
+extension by adding rows, which is what this is.
+
+**Row 5 — narrowed twice.** It began as "a built-in KB entry matched". It now requires:
+
+1. **`keyed`** — the entry matched an *identity* of this game, not a path shape. A
+   convention rule (`match_kind = 'any'`) matches every game in the library, so counting it
+   as a curated claim would bind the first conventional-looking folder that existed,
+   including a photo folder under `{DOCUMENTS}/{TITLE}`.
+2. **A curated `layout`** — the entry describes *this game's own* save location rather than
+   a class of installs. See [KB §4.0](./KNOWLEDGE_BASE.md#40-a-game-has-many-save-layouts-not-one).
+
+**Row 8b — advisory layout with save files (added).** A keyed entry whose layout is
+advisory — an engine convention, a storefront folder, a community layout — lands here rather
+than at row 5. It suggests at high strength, and content evidence is what raises it above a
+bare name match.
+
+Row 8b is the mechanism that replaces per-layout resolver logic. Nothing in it names a
+layout: it tests the **authority tier**, so a layout introduced by a future corpus flows
+through it automatically. There is deliberately no `if layout == "community"` anywhere in
+`resolver`, and adding support for a new save layout is a KB data change.
+
+### 6.2 What the table does *not* do
+
+**It does not choose between candidates.** Each candidate is decided independently, so a
+game with both an official path and a community-layout path present will produce two
+candidates. That is the honest outcome — NOVARA does not know which install this is — and
+the `score` orders them for display while the evidence model accumulates what distinguishes
+them.
+
+**It does not read a layout name, a game title, or a path.** Every row is a function of the
+evidence set plus one boolean (`path_exists`). This is what makes decisions reproducible:
+`decide` can be re-run over stored evidence and compared, and a disagreement means the
+evidence changed.
+
 ## 7. Candidate generation
 
 ### 7.1 Root set
@@ -531,6 +573,130 @@ NOVARA already knows the exact interval a game was running (`play_sessions`). A
 directory written during that interval, in a plausible root, not on the ignore
 list, is almost certainly the game's save directory — regardless of launcher,
 release group, era or naming.
+
+### 10.1.1 Primary use case: one game, several real save locations
+
+**A game legitimately has more than one save directory on disk, and Phase 1 is right to
+report all of them.**
+
+This is not an edge case and not a detection fault. A user who has changed store or
+edition accumulates save directories, and every one of them is real data that existed at
+some point:
+
+```
+Steam → Epic          Epic → GOG           a community layout → Steam
+```
+
+Confirmed twice in the first real library validated (task 1.22 / Track G):
+
+| Game | Locations found | Origin |
+|---|---|---|
+| Dying Light | `Documents/DyingLight/out/save` | current Epic install |
+| | `Steam/CODEX/{239140,304240}/remote` | an earlier install, still on disk |
+| Red Dead Redemption 2 | `Documents/Rockstar Games/Red Dead Redemption 2` | current install |
+| | `{APPDATA}/.1911/Red Dead Redemption 2/profile` | an earlier install, still on disk |
+
+The Track G report initially described the second RDR2 location as "noise". That was
+wrong, and the correction matters: it is not noise, it is a **historical save location**,
+and a user migrating stores may well want it — it is the only copy of a character they
+played for eighty hours.
+
+**Nothing in Phase 1 should suppress these.** The architecture already supports it:
+`save_candidates` is unique on `(game_id, path, role)` rather than on `game_id`, and the
+decision table decides per candidate, so several `bind_eligible` paths for one game are
+expressible by construction. No change is required, and reducing detections would destroy
+information.
+
+#### What Phase 2 adds: classification by observation
+
+Detection cannot tell which of several locations is *live* — every heuristic available to
+it (name, KB, content shape) describes all of them equally well. Only watching the running
+game can. So the Write Witness classifies:
+
+| Class | How it is established |
+|---|---|
+| **Active** | Written during a recent observed session |
+| **Historical** | Written during an earlier session, but not recent ones |
+| **Unused** | Detected, never observed being written |
+
+This must be **derived from evidence, never from a heuristic**. "The newest mtime wins" is
+exactly the kind of guess this architecture exists to avoid: a cloud sync, a backup tool or
+an antivirus scan can touch an abandoned directory and make it look live.
+
+#### Design consequences to carry into Phase 2
+
+**The classification needs no schema change.** It is a derivation over evidence that is
+already append-only and session-tagged — which is what append-only was for. An
+abandoned location keeps its old `WriteWitness` items forever, and that history is
+precisely what makes it classifiable as historical rather than unknown.
+
+**`Evidence::WriteWitness` should probably carry an `at` timestamp.** It currently holds
+`{ session_id, file_count, bytes }`. Distinguishing *recent* from *earlier* sessions from
+the evidence set alone would otherwise require joining `play_sessions`, which breaks §6's
+property that a decision is reproducible from its evidence. `UserConfirmed { at }` already
+sets the precedent. Adding a field is safe — the evidence enum is versioned and every
+field is `#[serde(default)]`-tolerant — but it is a Phase 2 decision, not a Phase 1 one.
+
+**Classification is presentation, not authority.** A historical location is still
+`bind_eligible` if the evidence says so; the class tells the *user* which to pick and lets
+the UI group them. It must not become a new decision-table row, or Phase 1's outcomes
+would start depending on how recently something was played.
+
+**Distinguish this from nested paths.** Two candidates where one is an ancestor of the
+other — `Documents/DyingLight` and `Documents/DyingLight/out/save` — are one location
+described at two granularities, and Phase 3 binding should collapse them. Two candidates
+under different roots are genuinely different locations and must not be collapsed. Same
+symptom, opposite handling.
+
+### 10.1.2 The classification model is two axes, not one list
+
+**Not implemented. Recorded so the model stays extensible.**
+
+Classification will eventually carry user intent alongside observation, and those are
+**orthogonal axes** rather than variants of one enum:
+
+| Axis | Values | Nature | Established by |
+|---|---|---|---|
+| Observation class | `Active`, `Historical`, `Unused` | **Derived** — recomputable from evidence | The Write Witness, and nothing else |
+| User state | `Imported`, `Pinned`, … | **Asserted** — sticky, survives rescans | The user |
+
+Collapsing them into a single field would be the same category error this project already
+made once and fixed: `layer` (who authored an entry) and `layout` (what kind of location it
+describes) were conflated behind a single proxy, and a community layout consequently bound
+with an official entry's authority — see [KB §4.0](./KNOWLEDGE_BASE.md). One field cannot
+carry two independent facts. A location can perfectly well be **`Historical` and `Pinned`
+at the same time**, and that combination being representable is the proof they are separate
+axes.
+
+#### The line that decides whether a new state is evidence
+
+"User intent never influences the resolver" would be too strong to be true:
+[`Evidence::UserConfirmed`] and [`Evidence::UserRejected`] *are* user intent, they *are*
+evidence, and they decide rows 1 and 2 outright — deliberately, because §5.3 ranks the user
+terminal. So the test is not *who said it* but *what it asserts*:
+
+> Does the state assert something about **whether this path is the save location**?
+> If yes, it is evidence and may decide. If it concerns presentation, ordering, retention
+> or workflow, it lives **above** the evidence model and must not decide anything.
+
+`UserConfirmed` says "this is the folder" — a claim about correctness, so it is evidence.
+`Pinned` says "keep this one where I can see it" — a claim about the user's workflow, so it
+is not. Applying this test to a proposed state is cheaper than arguing about it later.
+
+#### Consequences to respect when it is built
+
+**User state must not live in `save_candidates.status`.** That column is the decision
+table's output and the table is its sole authority; a `Pinned` value there would let user
+intent masquerade as a decision and break the guarantee that a decision is reproducible from
+its evidence.
+
+**A rescan must never clear an asserted state.** The same discipline
+`skipped_library_items.override_import` already follows, and the reason `UserRejected` is
+`locked`. Derived classes are recomputed freely; asserted ones are not.
+
+**Observation stays the only route to `Active`.** A user may pin a location, and that
+changes nothing about whether the game writes to it. Letting a user assert `Active` would
+reintroduce the guessing that §10.1.1 exists to remove.
 
 ### 10.2 Two implementations, ship the boring one first
 

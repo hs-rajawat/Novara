@@ -258,6 +258,45 @@ pub async fn record_scan_error(db: &Db, game_id: &str) -> AppResult<()> {
     record_attempt(db, game_id, ScanOutcome::Error).await
 }
 
+/// A game's persisted save state: what detection concluded, and when it last looked.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SaveState {
+    /// Every candidate, including rejected ones — a rejection is a result worth showing,
+    /// and each carries the decision-table row and sentence that produced it.
+    pub candidates: Vec<crate::models::SaveCandidate>,
+    /// The last scan attempt, or `None` if this game has never been scanned.
+    pub last_scan: Option<crate::models::SaveScanAttempt>,
+}
+
+/// Read a game's stored save state.
+///
+/// Pure read: detection is not triggered. A game that has never been scanned yields an
+/// empty candidate list and no attempt rather than an error — "nothing yet" is a valid
+/// state, not a failure.
+pub async fn save_state(db: &Db, game_id: &str) -> AppResult<SaveState> {
+    Ok(SaveState {
+        candidates: db.list_save_candidates(game_id).await?,
+        last_scan: db.scan_attempt(game_id).await?,
+    })
+}
+
+/// Mark a candidate rejected by the user.
+///
+/// Terminal by design: decision-table row 1 is `locked`, so a later scan or KB update will
+/// not resurrect a path the user turned down.
+///
+/// Existence is checked first so an unknown id reports `NotFound` rather than silently
+/// succeeding — the underlying `UPDATE` matches nothing and would otherwise look like a
+/// success to the caller.
+pub async fn reject_candidate(db: &Db, candidate_id: i64) -> AppResult<()> {
+    if db.get_save_candidate(candidate_id).await?.is_none() {
+        return Err(crate::error::AppError::NotFound(format!(
+            "save candidate {candidate_id}"
+        )));
+    }
+    db.reject_save_candidate(candidate_id).await
+}
+
 /// Timestamp helper kept here so the service and its tests agree on the format.
 pub fn now() -> String {
     now_rfc3339()

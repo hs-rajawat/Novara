@@ -1,0 +1,39 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'o'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:oblivion",
+      "match_kind": "title_norm",
+      "match_value": "oblivion",
+      "path_template": "{MYGAMES}/Oblivion/Saves",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:outerwilds",
+      "match_kind": "title_norm",
+      "match_value": "outerwilds",
+      "path_template": "{LOCALLOW}/Mobius Digital/Outer Wilds",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:oxygennotincluded",
+      "match_kind": "title_norm",
+      "match_value": "oxygennotincluded",
+      "path_template": "{DOCUMENTS}/Klei/OxygenNotIncluded",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    }
+  ]
+}

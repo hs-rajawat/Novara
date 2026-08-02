@@ -14,7 +14,8 @@ describes an aspiration as if it were built is worse than no document.
 |---|---|---|
 | [`SAVE_SYSTEM_ARCHITECTURE.md`](./SAVE_SYSTEM_ARCHITECTURE.md) | The four-layer model, subsystem boundaries, the save vault (snapshot / restore / retention), IPC surface, Rust module layout | You need the shape of the whole thing, or you are touching snapshots and restore |
 | [`GAME_SAVE_DETECTION.md`](./GAME_SAVE_DETECTION.md) | The detection pipeline: candidate generation, aliases, verification, the evidence model, the Write Witness, bindings, filesystem boundaries | You are working on *finding* a game's save location |
-| [`KNOWLEDGE_BASE.md`](./KNOWLEDGE_BASE.md) | The KB as a long-lived asset: the three layers, schema, versioning, trust and distribution, contribution workflow | You are adding save-location data, or building KB import/update |
+| [`KNOWLEDGE_BASE.md`](./KNOWLEDGE_BASE.md) | The KB as a long-lived asset: the three layers, save layouts, schema, versioning, trust and distribution, contribution workflow | You are adding save-location data, or building KB import/update |
+| [`LIBRARY_FILTERING.md`](./LIBRARY_FILTERING.md) | What is allowed into the library at all: Steam system components, the rule chain, skipped-item records, user overrides | You are changing what the scanner imports, or a real game went missing |
 | [`PARSER_ARCHITECTURE.md`](./PARSER_ARCHITECTURE.md) | Extractor tiers, the declarative manifest format, the compiled-provider registry, sandboxing rules | You are reading data *out of* save files |
 | [`ACHIEVEMENT_SYSTEM.md`](./ACHIEVEMENT_SYSTEM.md) | Definitions vs state vs user goals, unlock derivation, merge rules | You are working on achievements |
 | [`PROGRESS_TRACKING.md`](./PROGRESS_TRACKING.md) | The progress metric model, headline selection, the `completion_pct` contract | You are working on completion or progress display |

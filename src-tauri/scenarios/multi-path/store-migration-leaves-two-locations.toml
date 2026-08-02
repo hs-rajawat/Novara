@@ -1,0 +1,74 @@
+version = 1
+
+[scenario]
+id = "store-migration-leaves-two-locations"
+title = "A game moved between stores has two real save locations; the witness picks the live one"
+tags = ["multi-path", "write-witness", "phase-2"]
+
+# PHASE 2 FIXTURE. Carries `[[sessions]]`, which the parser refuses with a "Phase 2"
+# message, so the runner SKIPS it rather than failing. That is deliberate: the corpus is
+# allowed to hold cases ahead of the code, and `phase_2_fixtures_are_skipped_not_silently_passed`
+# proves the skip is a real skip and not an accidental pass.
+#
+# ── Why this case exists ────────────────────────────────────────────────────────
+#
+# Taken from a real library. Dying Light was installed from a community release, then
+# reinstalled from Epic; both save directories still exist on disk. Red Dead Redemption 2
+# showed the same shape. This is not an edge case — any user who changes store or edition
+# accumulates save directories, and every one of them was real data at some point.
+#
+# Phase 1 correctly reports BOTH. It has no way to tell which is live: name, knowledge base
+# and content shape all describe the two equally well. An mtime comparison would be a guess,
+# and a bad one — a cloud sync or an antivirus scan can touch an abandoned folder and make it
+# look current.
+#
+# Only observation settles it. The session below writes to the Epic-era location and not the
+# older one, which is the whole argument for the Write Witness: it answers a question no
+# amount of inference can.
+#
+# ── What Phase 2 must NOT do ────────────────────────────────────────────────────
+#
+# Suppress the historical location. It may hold the only copy of an eighty-hour character,
+# and a user migrating stores is exactly who needs it. `must_not_include` is deliberately
+# absent below.
+#
+# The classification (active / historical / unused) is presentation. A historical location
+# stays bind-eligible if its evidence says so — see GAME_SAVE_DETECTION.md §10.1.1.
+[game]
+title = "Some Migrated Game"
+steam_appid = "424242"
+last_played_at = "2026-01-04T22:05:00Z"
+
+# The current install's location.
+[[fs]]
+path = "{DOCUMENTS}/SomeMigratedGame/save"
+files = [
+  { name = "slot0.sav", size = 240000 },
+  { name = "slot1.sav", size = 238000 },
+]
+
+# The previous install's location, left behind. Same game, same kind of contents, and
+# indistinguishable from the above by every Phase 1 signal.
+[[fs]]
+path = "{APPDATA}/Steam/CODEX/424242/remote"
+files = [
+  { name = "slot0.sav", size = 190000 },
+  { name = "slot1.sav", size = 188000 },
+]
+
+# The game ran and wrote only to the current location.
+[[sessions]]
+started_at = "2026-01-04T20:00:00Z"
+ended_at = "2026-01-04T22:05:00Z"
+writes = ["{DOCUMENTS}/SomeMigratedGame/save"]
+
+[expect]
+# Decision table row 4: one witnessed session plus save-like contents.
+bind_eligible = "{DOCUMENTS}/SomeMigratedGame/save"
+rule = 4
+explanation_contains = "while you were playing"
+# Both locations are still offered. The older one is historical, not wrong.
+suggested = [
+  "{DOCUMENTS}/SomeMigratedGame/save",
+  "{APPDATA}/Steam/CODEX/424242/remote",
+]

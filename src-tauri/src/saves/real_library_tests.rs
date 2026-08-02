@@ -164,6 +164,175 @@ async fn curated_entry_paths_on_this_machine() {
     println!("  PARTIAL rows are the ones worth acting on: the game is here, the subfolder is not.");
 }
 
+/// Run the library filter over the games already in the real library.
+///
+/// Retrospective: these rows were imported before the filter existed, so this answers
+/// "what would the filter do now" — both which system components it removes and, more
+/// importantly, whether it would wrongly remove anything the user actually plays.
+#[tokio::test]
+#[ignore = "reads the developer's own library; run explicitly"]
+async fn library_filter_against_the_real_library() {
+    use crate::scanner::filter;
+
+    let Some(db_path) = live_db_path() else {
+        println!("\nNo NOVARA database found; run the app once first.");
+        return;
+    };
+    let scratch = crate::test_support::TempDir::new("filter-validation");
+    let copy = scratch.path().join("gamevault.db");
+    std::fs::copy(&db_path, &copy).expect("copy the live database");
+    let db = crate::db::Db::open(&copy).await.expect("open the copy");
+
+    let games = db.list_games(true).await.expect("list games");
+    println!("\n=== library filter, applied retrospectively ===");
+    let mut skipped = 0usize;
+
+    for game in &games {
+        let installs = db.list_installations(&game.id).await.unwrap();
+        let install = installs.iter().find(|i| i.is_primary == 1).or(installs.first());
+        let source = match install {
+            Some(i) => db.source_code_for(i.source_id).await.unwrap(),
+            None => "manual".to_string(),
+        };
+        let dir = install
+            .map(|i| std::path::PathBuf::from(&i.install_dir))
+            .unwrap_or_default();
+
+        let verdict = filter::classify(&filter::Candidate {
+            source_code: &source,
+            source_app_id: install.and_then(|i| i.source_app_id.as_deref()),
+            title: &game.title,
+            install_dir: &dir,
+            // Steam leaves this unset; the scanner passes `Some(true)` only when it
+            // actually resolved a binary.
+            has_executable: install.and_then(|i| i.executable.as_ref().map(|_| true)),
+        });
+
+        match verdict.skip() {
+            Some(s) => {
+                skipped += 1;
+                println!("  SKIP    {:<44} [{}] {}", game.title, s.rule, s.reason);
+            }
+            None => println!("  import  {}", game.title),
+        }
+    }
+
+    println!(
+        "\n  {} of {} would be kept out of the library",
+        skipped,
+        games.len()
+    );
+    println!("  Check the import lines: a real game appearing as SKIP is a defect.");
+}
+
+/// The Track G validation report.
+///
+/// Prints, for every game in the real library: which KB entry matched, which decision-table
+/// row fired, the final outcome, the full evidence set and the matched path — then lists the
+/// games where nothing was found, for manual classification.
+///
+/// Deliberately verbose. The other harnesses summarise; this one exists to be read.
+#[tokio::test]
+#[ignore = "reads the developer's own library; run explicitly"]
+async fn track_g_validation_report() {
+    let Some(db_path) = live_db_path() else {
+        println!("\nNo NOVARA database found; run the app once first.");
+        return;
+    };
+    let scratch = crate::test_support::TempDir::new("track-g");
+    let copy = scratch.path().join("gamevault.db");
+    std::fs::copy(&db_path, &copy).expect("copy the live database");
+    let db = crate::db::Db::open(&copy).await.expect("open the copy");
+
+    match crate::saves::kb::builtin::load(&db).await {
+        Ok(Ok(o)) => println!("\nbuilt-in KB: {o:?}"),
+        Ok(Err(e)) => println!("\nbuilt-in KB INVALID: {e}"),
+        Err(e) => println!("\nbuilt-in KB load failed: {e}"),
+    }
+
+    let games = db.list_games(true).await.expect("list games");
+    let fs = RealFs;
+    let mut nothing: Vec<String> = Vec::new();
+    let mut timings: Vec<(u128, String)> = Vec::new();
+
+    println!("\n════════ per-game detection ════════");
+    for game in &games {
+        let Some(ctx) = service::context_for(&db, &game.id).await.unwrap() else {
+            continue;
+        };
+
+        let started = Instant::now();
+        let outcome = pipeline::detect_with_kb(&db, &fs, &ctx).await.unwrap();
+        timings.push((started.elapsed().as_micros(), game.title.clone()));
+
+        println!(
+            "\n▸ {}  [steam:{}]",
+            game.title,
+            ctx.steam_appid.as_deref().unwrap_or("-")
+        );
+        if outcome.assessed.is_empty() {
+            println!("    (no candidate paths at all)");
+            nothing.push(game.title.clone());
+            continue;
+        }
+
+        for a in &outcome.assessed {
+            println!(
+                "    {:<13} rule {:<2}  {}",
+                a.decision.outcome.status(),
+                a.decision.rule,
+                redact(&a.path)
+            );
+            println!("        why      : {}", a.decision.explanation);
+            for e in &a.evidence.items {
+                let detail = match e {
+                    Evidence::KbMatch { entry_id, layer, layout, keyed, priority } => format!(
+                        "KbMatch      {entry_id}  layer={layer:?} layout={layout} keyed={keyed} priority={priority}"
+                    ),
+                    Evidence::NameMatch { alias, similarity } => {
+                        format!("NameMatch    alias=`{alias}` similarity={similarity:.2}")
+                    }
+                    Evidence::InstallLocal { subdir } => format!("InstallLocal {subdir}"),
+                    Evidence::ContentShape { save_like, total, newest_mtime, .. } => format!(
+                        "ContentShape save_like={save_like} of {total} newest={}",
+                        newest_mtime.as_deref().unwrap_or("-")
+                    ),
+                    Evidence::ContentMismatch { reason } => format!("ContentMismatch {reason}"),
+                    other => format!("{other:?}"),
+                };
+                println!("        evidence : {detail}");
+            }
+        }
+
+        if outcome
+            .assessed
+            .iter()
+            .all(|a| a.decision.outcome == Outcome::Rejected)
+        {
+            nothing.push(format!("{} (all candidates rejected)", game.title));
+        }
+    }
+
+    println!("\n════════ nothing offered ════════");
+    if nothing.is_empty() {
+        println!("  (none)");
+    }
+    for t in &nothing {
+        println!("  {t}");
+    }
+
+    timings.sort_unstable_by_key(|t| std::cmp::Reverse(t.0));
+    let total: u128 = timings.iter().map(|t| t.0).sum();
+    println!(
+        "\n════════ timing ════════\n  average {:.2} ms over {} games",
+        if timings.is_empty() { 0.0 } else { total as f64 / timings.len() as f64 / 1000.0 },
+        timings.len()
+    );
+    for (micros, title) in timings.iter().take(3) {
+        println!("  worst   {:.2} ms  {title}", *micros as f64 / 1000.0);
+    }
+}
+
 #[tokio::test]
 #[ignore = "reads the developer's own library; run explicitly"]
 async fn real_library_validation() {

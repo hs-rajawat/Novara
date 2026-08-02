@@ -1,0 +1,97 @@
+{
+  "layout": "os",
+  "_about": [
+    "Windows conventions: known folders and general profile practice.",
+    "",
+    "match_kind 'any'. These are the broadest rules in the corpus and the ones most likely",
+    "to produce a candidate for the wrong folder, which is exactly why they are advisory",
+    "and cannot bind.",
+    "",
+    "The {PUBLISHER} and {DEVELOPER} variants only expand when that metadata is known, so",
+    "they cost nothing for a game NOVARA has no metadata for. They are the generic form of",
+    "the vendor-folder shape that BioWare, Paradox, Klei and Rockstar all use, which is why",
+    "adding a per-publisher literal rule is rarely worth it."
+  ],
+  "entries": [
+    {
+      "id": "builtin:convention-appdata-title",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/{TITLE}",
+      "priority": 100,
+      "note": "Windows roaming profile, game folder directly",
+      "source_ref": "os-convention:windows-roaming"
+    },
+    {
+      "id": "builtin:convention-appdata-vendor-developer",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/{DEVELOPER}/{TITLE}",
+      "priority": 100,
+      "note": "Windows roaming profile, developer folder",
+      "source_ref": "os-convention:windows-roaming"
+    },
+    {
+      "id": "builtin:convention-appdata-vendor-publisher",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/{PUBLISHER}/{TITLE}",
+      "priority": 100,
+      "note": "Windows roaming profile, vendor folder",
+      "source_ref": "os-convention:windows-roaming"
+    },
+    {
+      "id": "builtin:convention-documents-developer",
+      "match_kind": "any",
+      "path_template": "{DOCUMENTS}/{DEVELOPER}/{TITLE}",
+      "priority": 110,
+      "note": "Vendor folder under Documents, keyed on the developer",
+      "source_ref": "os-convention:documents"
+    },
+    {
+      "id": "builtin:convention-documents-publisher",
+      "match_kind": "any",
+      "path_template": "{DOCUMENTS}/{PUBLISHER}/{TITLE}",
+      "priority": 110,
+      "note": "Vendor folder under Documents, the shape BioWare, Paradox and Klei all use",
+      "source_ref": "os-convention:documents"
+    },
+    {
+      "id": "builtin:convention-documents-title",
+      "match_kind": "any",
+      "path_template": "{DOCUMENTS}/{TITLE}",
+      "priority": 100,
+      "note": "Documents, game folder directly",
+      "source_ref": "os-convention:documents"
+    },
+    {
+      "id": "builtin:convention-known-folder-saved-games",
+      "match_kind": "any",
+      "path_template": "{SAVEDGAMES}/{TITLE}",
+      "priority": 100,
+      "note": "Windows Vista+ FOLDERID_SavedGames known folder",
+      "source_ref": "os-convention:windows-known-folder"
+    },
+    {
+      "id": "builtin:convention-localappdata-title",
+      "match_kind": "any",
+      "path_template": "{LOCALAPPDATA}/{TITLE}",
+      "priority": 100,
+      "note": "Windows local profile, game folder directly",
+      "source_ref": "os-convention:windows-local"
+    },
+    {
+      "id": "builtin:convention-my-games",
+      "match_kind": "any",
+      "path_template": "{MYGAMES}/{TITLE}",
+      "priority": 100,
+      "note": "Documents/My Games, from Games for Windows guidance",
+      "source_ref": "os-convention:my-games"
+    },
+    {
+      "id": "builtin:convention-my-games-saves",
+      "match_kind": "any",
+      "path_template": "{MYGAMES}/{TITLE}/Saves",
+      "priority": 100,
+      "note": "Documents/My Games with a Saves subfolder",
+      "source_ref": "os-convention:my-games"
+    }
+  ]
+}

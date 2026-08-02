@@ -15,6 +15,11 @@ fn kb(id: &str, layer: KbLayer, keyed: bool) -> Evidence {
         layer,
         priority: 10,
         keyed,
+        layout: if keyed {
+            crate::saves::kb::layout::OFFICIAL.into()
+        } else {
+            crate::saves::kb::layout::OS.into()
+        },
     }
 }
 

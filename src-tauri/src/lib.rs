@@ -129,6 +129,8 @@ pub fn run() {
             commands::saves::restore_backup,
             commands::saves::delete_save_profile,
             commands::saves::detect_save_paths,
+            commands::saves::saves_get_state,
+            commands::saves::saves_reject,
             commands::saves::save_kb_status,
             commands::saves::add_save_kb_entry,
             commands::saves::remove_save_kb_entry,

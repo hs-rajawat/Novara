@@ -8,6 +8,29 @@ use crate::saves::kb::import::{self, UserEntryInput};
 use crate::saves::locator::DetectedPath;
 use crate::state::AppState;
 
+/// A game's stored save state: candidates with their decisions, and the last scan attempt.
+///
+/// A pure read — this does **not** trigger detection. `detect_save_paths` does that.
+#[tauri::command]
+pub async fn saves_get_state(
+    game_id: String,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<crate::saves::service::SaveState> {
+    crate::saves::service::save_state(&state.db, &game_id).await
+}
+
+/// Mark a candidate rejected by the user.
+///
+/// Terminal: decision-table row 1 is `locked`, so a later scan or KB update will not
+/// resurrect a path the user turned down.
+#[tauri::command]
+pub async fn saves_reject(
+    candidate_id: i64,
+    state: State<'_, Arc<AppState>>,
+) -> AppResult<()> {
+    crate::saves::service::reject_candidate(&state.db, candidate_id).await
+}
+
 /// The knowledge base layers present, with the version of each.
 ///
 /// Read-only and cheap; exposed so a user can see whether the corpus loaded at all

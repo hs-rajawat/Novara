@@ -1,0 +1,24 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'x'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:xcom-2",
+      "match_kind": "title_norm",
+      "match_value": "xcom2",
+      "path_template": "{MYGAMES}/XCOM2",
+      "priority": 10,
+      "note": "Parent folder; save data sits deeper",
+      "source_ref": "curated:phase1"
+    }
+  ]
+}

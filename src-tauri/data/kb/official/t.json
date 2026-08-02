@@ -1,0 +1,117 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 't'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:terraria",
+      "match_kind": "title_norm",
+      "match_value": "terraria",
+      "path_template": "{MYGAMES}/Terraria",
+      "priority": 10,
+      "note": "Parent folder: players and worlds are separate subfolders",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:thebindingofisaacrebirth",
+      "match_kind": "title_norm",
+      "match_value": "thebindingofisaacrebirth",
+      "path_template": "{MYGAMES}/Binding of Isaac Afterbirth+",
+      "priority": 10,
+      "note": "Rebirth and its expansions share the newest folder",
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:theelderscrollsivoblivion",
+      "match_kind": "title_norm",
+      "match_value": "theelderscrollsivoblivion",
+      "path_template": "{MYGAMES}/Oblivion/Saves",
+      "priority": 10,
+      "note": "Store title carries the numeral, the folder does not",
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:theforest",
+      "match_kind": "title_norm",
+      "match_value": "theforest",
+      "path_template": "{LOCALLOW}/SKS/TheForest",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:theouterworlds",
+      "match_kind": "title_norm",
+      "match_value": "theouterworlds",
+      "path_template": "{LOCALAPPDATA}/Indiana/Saved/SaveGames",
+      "priority": 10,
+      "note": "Unreal project name differs from the title",
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:thewitcher",
+      "match_kind": "title_norm",
+      "match_value": "thewitcher",
+      "path_template": "{DOCUMENTS}/The Witcher/saves",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:thewitcher2",
+      "match_kind": "title_norm",
+      "match_value": "thewitcher2",
+      "path_template": "{DOCUMENTS}/Witcher 2/gamesaves",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:thewitcher2assassinsofkings",
+      "match_kind": "title_norm",
+      "match_value": "thewitcher2assassinsofkings",
+      "path_template": "{DOCUMENTS}/Witcher 2/gamesaves",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:the-witcher-3",
+      "match_kind": "title_norm",
+      "match_value": "thewitcher3",
+      "path_template": "{DOCUMENTS}/The Witcher 3/gamesaves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:the-witcher-3-wild-hunt",
+      "match_kind": "title_norm",
+      "match_value": "thewitcher3wildhunt",
+      "path_template": "{DOCUMENTS}/The Witcher 3/gamesaves",
+      "priority": 10,
+      "note": "Same folder; the store title carries the subtitle, the folder does not",
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:the-finals",
+      "match_kind": "title_norm",
+      "match_value": "thefinals",
+      "path_template": "{LOCALAPPDATA}/Discovery/Saved/SaveGames",
+      "priority": 10,
+      "note": "Unreal project name is Discovery, unrelated to the title, so the engine convention cannot reach it. Verified on a real install during Track G",
+      "source_ref": "curated:verified-track-g"
+    },
+    {
+      "id": "builtin:totalwarwarhammeriii",
+      "match_kind": "title_norm",
+      "match_value": "totalwarwarhammeriii",
+      "path_template": "{APPDATA}/The Creative Assembly/Warhammer3/save_games",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    }
+  ]
+}

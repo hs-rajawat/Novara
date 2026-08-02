@@ -41,6 +41,11 @@ fn kb_entry(id: &str, layer: &str, match_kind: &str, value: &str, template: &str
         match_value: value.into(),
         platform: "windows".into(),
         role: "saves".into(),
+        layout: if match_kind == "any" {
+            crate::saves::kb::layout::OS.into()
+        } else {
+            crate::saves::kb::layout::OFFICIAL.into()
+        },
         path_template: template.into(),
         glob: None,
         priority: if match_kind == "any" { 100 } else { 10 },

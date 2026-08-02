@@ -71,11 +71,19 @@ pub enum Evidence {
     /// path shapes in general and applies to every game in the library. §5.3 rates
     /// `KbMatch(builtin)` as strong evidence; that is only true of the first kind,
     /// and conflating them would let a convention rule bind a photo folder.
+    ///
+    /// `layout` records what *sort* of location the entry describes — see
+    /// [`crate::saves::kb::layout`]. It is a free-form string so that a new layout is a
+    /// data change, and `#[serde(default)]` so evidence written before layouts existed
+    /// still deserialises: the migration's `DEFAULT 'unspecified'` covers stored entries,
+    /// and this covers stored *evidence*.
     KbMatch {
         entry_id: String,
         layer: KbLayer,
         priority: u16,
         keyed: bool,
+        #[serde(default = "default_layout")]
+        layout: String,
     },
 
     /// The directory name resembles the game title.
@@ -120,6 +128,11 @@ pub enum Evidence {
     Unknown,
 }
 
+/// The layout recorded for evidence written before layouts existed.
+fn default_layout() -> String {
+    super::kb::layout::UNSPECIFIED.to_string()
+}
+
 impl Evidence {
     /// Relative weight, used **only** for ordering a suggestion list and for deciding
     /// what to evict when [`MAX_ITEMS`] is reached.
@@ -133,14 +146,23 @@ impl Evidence {
             Evidence::UserConfirmed { .. } => 1000.0,
             Evidence::UserRejected { .. } => 900.0,
             Evidence::WriteWitness { .. } => 100.0,
-            Evidence::KbMatch { layer, keyed, .. } => match (layer, keyed) {
-                (KbLayer::User, _) => 90.0,
-                (KbLayer::Builtin, true) => 60.0,
-                (KbLayer::Community, true) => 40.0,
-                // A convention rule. Barely more than a name match, and §5.3's
-                // "strong" rating does not apply to it.
-                (_, false) => 12.0,
-            },
+            Evidence::KbMatch { layer, keyed, layout, .. } => {
+                let base = match (layer, keyed) {
+                    (KbLayer::User, _) => 90.0,
+                    (KbLayer::Builtin, true) => 60.0,
+                    (KbLayer::Community, true) => 40.0,
+                    // A convention rule. Barely more than a name match, and §5.3's
+                    // "strong" rating does not apply to it.
+                    (_, false) => 12.0,
+                };
+                // An advisory layout describes a *class* of installs, so it orders below
+                // an equally-provenanced curated one. Ordering only — the decision itself
+                // reads `layout::authority` directly.
+                match super::kb::layout::authority(layout) {
+                    super::kb::layout::Authority::Curated => base,
+                    super::kb::layout::Authority::Advisory => base * 0.6,
+                }
+            }
             Evidence::ContentMismatch { .. } => 25.0,
             Evidence::ContentShape { save_like, .. } => {
                 // Diminishing: two save files say much more than none, twenty say

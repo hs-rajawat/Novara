@@ -154,6 +154,15 @@ pub struct SaveKbEntry {
     pub match_value: String,
     pub platform: String,
     pub role: String,
+    /// What *kind* of location this describes: `official`, `engine`, `os`, `launcher`,
+    /// `community`, `portable`, `user_defined`, `unspecified` — or anything a future
+    /// corpus introduces. Free-form by design, because adding a save layout must be a
+    /// data change rather than a migration; `crate::saves::kb::layout` classifies it and
+    /// treats an unrecognised value as the least authoritative.
+    ///
+    /// Orthogonal to `layer`: that records *who said so*, this records *what sort of
+    /// claim it is*.
+    pub layout: String,
     /// e.g. `{APPDATA}/{PUBLISHER}/{TITLE}`. Expanded from a closed variable set.
     pub path_template: String,
     pub glob: Option<String>,

@@ -17,6 +17,9 @@ use crate::error::AppResult;
 use crate::events::{AppEvent, EventBus};
 
 pub mod epic;
+/// Decides what belongs in the library at all. Runs before anything is imported, so a
+/// system component costs nothing downstream.
+pub mod filter;
 pub mod manual;
 pub mod steam;
 
@@ -58,6 +61,11 @@ pub struct ScanReport {
     pub source: String,
     pub found: u32,
     pub added: u32,
+    /// Items the library filter kept out — system components, mostly. Reported rather than
+    /// left as a silent gap between `found` and `added`, so a user who wonders why the
+    /// numbers disagree has an answer, and so a filter that becomes too aggressive is
+    /// visible instead of quiet. Details are in `skipped_library_items`.
+    pub skipped: u32,
 }
 
 /// Total size of every file under `dir`, in bytes.
@@ -156,6 +164,9 @@ impl ScannerOrchestrator {
             let result = scanner.scan(&roots).await;
 
             let mut added = 0u32;
+            // Items the filter kept out. Counted so a scan report can say so rather than
+            // leaving a silent gap between ound and dded.
+            let mut skipped = 0u32;
             let mut found = 0u32;
             let mut err: Option<String> = None;
 
@@ -171,6 +182,49 @@ impl ScannerOrchestrator {
                             .executable
                             .as_ref()
                             .map(|p| p.to_string_lossy().into_owned());
+
+                        // Decide whether this belongs in the library at all, before any
+                        // downstream cost is incurred — no artwork lookup, no save scan, no
+                        // UI row. See `scanner::filter`.
+                        let verdict = filter::classify(&filter::Candidate {
+                            source_code: &g.source_code,
+                            source_app_id: g.source_app_id.as_deref(),
+                            title: &g.title,
+                            install_dir: &g.install_dir,
+                            has_executable: g.executable.as_ref().map(|_| true),
+                        });
+                        if let Some(skip) = verdict.skip() {
+                            // An explicit user override wins over any filter rule. Checked
+                            // here rather than inside `classify` so the filter stays a pure
+                            // function of the candidate and remains unit-testable.
+                            let overridden = self
+                                .db
+                                .is_import_overridden(
+                                    &g.source_code,
+                                    g.source_app_id.as_deref(),
+                                    &g.title,
+                                )
+                                .await
+                                .unwrap_or(false);
+                            if !overridden {
+                                skipped += 1;
+                                // Best effort: failing to record a skip must not fail the
+                                // scan. The item is still kept out either way.
+                                let _ = self
+                                    .db
+                                    .record_skipped_item(
+                                        &g.source_code,
+                                        g.source_app_id.as_deref(),
+                                        &g.title,
+                                        Some(install_dir.as_str()),
+                                        skip.rule,
+                                        &skip.reason,
+                                    )
+                                    .await;
+                                continue;
+                            }
+                        }
+
                         let size = self
                             .resolve_install_size(&install_dir, g.install_size_bytes)
                             .await;
@@ -227,11 +281,12 @@ impl ScannerOrchestrator {
                 found,
             });
 
-            info!(source = code, found, added, "scan complete");
+            info!(source = code, found, added, skipped, "scan complete");
             reports.push(ScanReport {
                 source: code.to_string(),
                 found,
                 added,
+                skipped,
             });
         }
         Ok(reports)

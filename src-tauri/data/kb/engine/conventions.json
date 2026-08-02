@@ -1,0 +1,69 @@
+{
+  "layout": "engine",
+  "_about": [
+    "Engine conventions: where games built on a given engine write saves by default.",
+    "",
+    "match_kind 'any', so ONE rule covers every game on that engine without NOVARA",
+    "knowing which games use it. Safe because a candidate is only produced when the",
+    "expanded path actually exists.",
+    "",
+    "Advisory: an engine convention says 'games on this engine write here', which is true",
+    "and still does not establish that this directory belongs to this game. It suggests,",
+    "and content evidence promotes it.",
+    "",
+    "Note that Unreal projects frequently use an internal project name unrelated to the",
+    "title -- Satisfactory is FactoryGame, Palworld is Pal. The generic rule below only",
+    "fires when the folder happens to match the title, which is why those games also have",
+    "explicit entries in official/."
+  ],
+  "entries": [
+    {
+      "id": "builtin:convention-godot-userdata",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/Godot/app_userdata/{TITLE}",
+      "priority": 100,
+      "note": "Godot maps user:// here on Windows",
+      "source_ref": "engine-convention:godot"
+    },
+    {
+      "id": "builtin:convention-renpy",
+      "match_kind": "any",
+      "path_template": "{APPDATA}/RenPy/{TITLE}",
+      "priority": 100,
+      "note": "Ren'Py persistent save directory",
+      "source_ref": "engine-convention:renpy"
+    },
+    {
+      "id": "builtin:convention-rpgmaker-www-save",
+      "match_kind": "any",
+      "path_template": "{INSTALL}/www/save",
+      "priority": 100,
+      "note": "RPG Maker MV/MZ keep saves inside the deployed web root",
+      "source_ref": "engine-convention:rpgmaker"
+    },
+    {
+      "id": "builtin:convention-unity-locallow-developer",
+      "match_kind": "any",
+      "path_template": "{LOCALLOW}/{DEVELOPER}/{TITLE}",
+      "priority": 100,
+      "note": "Unity Application.persistentDataPath (company/product)",
+      "source_ref": "engine-convention:unity"
+    },
+    {
+      "id": "builtin:convention-unity-locallow-publisher",
+      "match_kind": "any",
+      "path_template": "{LOCALLOW}/{PUBLISHER}/{TITLE}",
+      "priority": 100,
+      "note": "Unity persistentDataPath where the publisher is the company name",
+      "source_ref": "engine-convention:unity"
+    },
+    {
+      "id": "builtin:convention-unreal-savegames",
+      "match_kind": "any",
+      "path_template": "{LOCALAPPDATA}/{TITLE}/Saved/SaveGames",
+      "priority": 100,
+      "note": "Unreal Engine 4/5 default save location",
+      "source_ref": "engine-convention:unreal"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'c'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:celeste",
+      "match_kind": "title_norm",
+      "match_value": "celeste",
+      "path_template": "{LOCALAPPDATA}/Celeste/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:citiesskylines",
+      "match_kind": "title_norm",
+      "match_value": "citiesskylines",
+      "path_template": "{LOCALLOW}/Colossal Order/Cities_Skylines",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:citiesskylinesii",
+      "match_kind": "title_norm",
+      "match_value": "citiesskylinesii",
+      "path_template": "{LOCALLOW}/Colossal Order/Cities Skylines II",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:crusaderkingsiii",
+      "match_kind": "title_norm",
+      "match_value": "crusaderkingsiii",
+      "path_template": "{DOCUMENTS}/Paradox Interactive/Crusader Kings III/save games",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:cultofthelamb",
+      "match_kind": "title_norm",
+      "match_value": "cultofthelamb",
+      "path_template": "{LOCALLOW}/Massive Monster/Cult Of The Lamb",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:cuphead",
+      "match_kind": "title_norm",
+      "match_value": "cuphead",
+      "path_template": "{LOCALLOW}/StudioMDHR/Cuphead",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:cyberpunk-2077",
+      "match_kind": "title_norm",
+      "match_value": "cyberpunk2077",
+      "path_template": "{SAVEDGAMES}/CD Projekt Red/Cyberpunk 2077",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    }
+  ]
+}

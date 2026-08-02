@@ -1,0 +1,113 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 's'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:civilization-vi",
+      "match_kind": "title_norm",
+      "match_value": "sidmeierscivilizationvi",
+      "path_template": "{MYGAMES}/Sid Meier's Civilization VI/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:satisfactory",
+      "match_kind": "title_norm",
+      "match_value": "satisfactory",
+      "path_template": "{LOCALAPPDATA}/FactoryGame/Saved/SaveGames",
+      "priority": 10,
+      "note": "Unreal project name differs from the title",
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:sekiro",
+      "match_kind": "title_norm",
+      "match_value": "sekiroshadowsdietwice",
+      "path_template": "{APPDATA}/Sekiro/{WILDCARD}",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:skyrim",
+      "match_kind": "title_norm",
+      "match_value": "skyrim",
+      "path_template": "{MYGAMES}/Skyrim/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:skyrim-special-edition",
+      "match_kind": "title_norm",
+      "match_value": "skyrimspecialedition",
+      "path_template": "{MYGAMES}/Skyrim Special Edition/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:skyrimvr",
+      "match_kind": "title_norm",
+      "match_value": "skyrimvr",
+      "path_template": "{MYGAMES}/Skyrim VR/Saves",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:slimerancher",
+      "match_kind": "title_norm",
+      "match_value": "slimerancher",
+      "path_template": "{LOCALLOW}/Monomi Park/Slime Rancher",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:sonsoftheforest",
+      "match_kind": "title_norm",
+      "match_value": "sonsoftheforest",
+      "path_template": "{LOCALLOW}/Endnight/SonsOfTheForest",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:stardew-valley",
+      "match_kind": "title_norm",
+      "match_value": "stardewvalley",
+      "path_template": "{APPDATA}/StardewValley/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:starfield",
+      "match_kind": "title_norm",
+      "match_value": "starfield",
+      "path_template": "{MYGAMES}/Starfield/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:stellaris",
+      "match_kind": "title_norm",
+      "match_value": "stellaris",
+      "path_template": "{DOCUMENTS}/Paradox Interactive/Stellaris/save games",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:subnautica",
+      "match_kind": "title_norm",
+      "match_value": "subnautica",
+      "path_template": "{LOCALLOW}/Unknown Worlds/Subnautica",
+      "priority": 10,
+      "note": "Parent folder; saved games sit in a subfolder",
+      "source_ref": "curated:phase1"
+    }
+  ]
+}

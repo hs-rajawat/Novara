@@ -20,6 +20,7 @@ pub mod artwork;
 pub mod games;
 pub mod playtime;
 pub mod save_candidates;
+pub mod skipped_items;
 pub mod save_kb;
 pub mod saves;
 pub mod settings;

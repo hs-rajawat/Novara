@@ -6,6 +6,17 @@
 //! it; and it cannot be edited in place to point NOVARA at an arbitrary directory,
 //! which would turn a data file into a code path.
 //!
+//! ## Where the corpus lives
+//!
+//! Not in one file. `data/kb/` is organised into category directories — `official/`,
+//! `engine/`, `os/`, `community/`, `portable/` — and `build.rs` merges them into a single
+//! document in `OUT_DIR` which this module embeds. See `data/kb/README.md`.
+//!
+//! The directory structure is **organisation only**. It has no effect on matching,
+//! authority, evidence or the decision table; what governs behaviour is the `layout` each
+//! file declares and every entry in it inherits. Runtime cost is unchanged by the split:
+//! still one embedded string and one parse, with no directory walking at startup.
+//!
 //! ## Loading is deterministic and idempotent
 //!
 //! [`load`] computes a SHA-256 over the embedded bytes and compares it with the
@@ -13,8 +24,8 @@
 //! Startup therefore costs one small query in the overwhelmingly common case, and
 //! running it twice is indistinguishable from running it once.
 //!
-//! Insertion order follows file order and the checksum covers the exact bytes, so
-//! the same binary always produces the same database state.
+//! `build.rs` merges files in sorted order for exactly this reason: unstable ordering would
+//! change the checksum on every build and reload the corpus on every launch.
 //!
 //! ## Invariant I7
 //!
@@ -29,11 +40,16 @@ use crate::error::AppResult;
 
 use super::validate::{validate_entry, EntryError};
 
-/// The embedded corpus. Versioned in the filename so a future format change is a
-/// new file rather than a silent reinterpretation of this one.
-const BUILTIN_JSON: &str = include_str!("../../../data/kb/builtin-v1.json");
+/// The corpus, merged from `data/kb/**/*.json` by `build.rs`.
+const BUILTIN_JSON: &str = include_str!(concat!(env!("OUT_DIR"), "/builtin-kb.json"));
 
 pub const LAYER: &str = "builtin";
+
+/// A parsed corpus: its version, and each entry with the file it came from.
+///
+/// The origin is `Option` because it is stamped by `build.rs` and would therefore be absent
+/// if the merged document were ever hand-written. Diagnostic only — see `RawEntry::origin`.
+pub type ParsedCorpus = (String, Vec<(NewKbEntry, Option<String>)>);
 
 #[derive(Debug, Deserialize)]
 struct BuiltinFile {
@@ -55,6 +71,10 @@ struct RawEntry {
     platform: String,
     #[serde(default = "default_role")]
     role: String,
+    /// Free-form; see super::layout. Absent means unclassified rather than invalid, so
+    /// an older corpus still loads.
+    #[serde(default = "default_layout")]
+    layout: String,
     path_template: String,
     #[serde(default)]
     glob: Option<String>,
@@ -64,6 +84,14 @@ struct RawEntry {
     note: Option<String>,
     #[serde(default)]
     source_ref: Option<String>,
+    /// Which corpus file this came from, stamped by uild.rs.
+    ///
+    /// **Diagnostic only.** Never persisted, never read by matching or the resolver. It
+    /// exists so a failing corpus test can name the file to open — without it, merging many
+    /// files into one blob would make the corpus harder to debug than the single file it
+    /// replaced, which would be a regression dressed up as an improvement.
+    #[serde(default, rename = "_origin")]
+    origin: Option<String>,
 }
 
 fn default_platform() -> String {
@@ -75,6 +103,9 @@ fn default_role() -> String {
 fn default_priority() -> i64 {
     100
 }
+fn default_layout() -> String {
+    super::layout::UNSPECIFIED.into()
+}
 
 impl From<RawEntry> for NewKbEntry {
     fn from(r: RawEntry) -> Self {
@@ -84,6 +115,7 @@ impl From<RawEntry> for NewKbEntry {
             match_value: r.match_value,
             platform: r.platform,
             role: r.role,
+            layout: r.layout,
             path_template: r.path_template,
             glob: r.glob,
             priority: r.priority,
@@ -101,7 +133,13 @@ impl From<RawEntry> for NewKbEntry {
 #[derive(Debug)]
 pub enum BuiltinError {
     Parse(String),
-    Invalid { id: String, reason: EntryError },
+    Invalid {
+        id: String,
+        /// Which corpus file to open. Merging many files into one blob would otherwise make
+        /// a failure harder to act on than it was when the corpus was a single file.
+        origin: String,
+        reason: EntryError,
+    },
     DuplicateId(String),
     Empty,
 }
@@ -110,8 +148,8 @@ impl std::fmt::Display for BuiltinError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BuiltinError::Parse(e) => write!(f, "built-in KB is not valid JSON: {e}"),
-            BuiltinError::Invalid { id, reason } => {
-                write!(f, "built-in KB entry `{id}` is invalid: {reason}")
+            BuiltinError::Invalid { id, origin, reason } => {
+                write!(f, "built-in KB entry `{id}` ({origin}) is invalid: {reason}")
             }
             BuiltinError::DuplicateId(id) => {
                 write!(f, "built-in KB contains duplicate id `{id}`")
@@ -126,7 +164,7 @@ impl std::fmt::Display for BuiltinError {
 /// **Every entry is validated before any is inserted, and one bad entry rejects the
 /// whole file.** Loading 39 of 40 entries would leave a database state that no
 /// source file describes, and the missing one would present as a detection bug.
-pub fn parsed() -> Result<(String, Vec<NewKbEntry>), BuiltinError> {
+pub fn parsed_with_origins() -> Result<ParsedCorpus, BuiltinError> {
     let file: BuiltinFile =
         serde_json::from_str(BUILTIN_JSON).map_err(|e| BuiltinError::Parse(e.to_string()))?;
 
@@ -137,17 +175,27 @@ pub fn parsed() -> Result<(String, Vec<NewKbEntry>), BuiltinError> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::with_capacity(file.entries.len());
     for raw in file.entries {
+        let origin = raw.origin.clone();
         let entry: NewKbEntry = raw.into();
         if !seen.insert(entry.id.clone()) {
             return Err(BuiltinError::DuplicateId(entry.id));
         }
         validate_entry(LAYER, &entry).map_err(|reason| BuiltinError::Invalid {
             id: entry.id.clone(),
+            origin: origin.clone().unwrap_or_else(|| "unknown file".into()),
             reason,
         })?;
-        out.push(entry);
+        out.push((entry, origin));
     }
     Ok((file.version, out))
+}
+
+/// Parse the corpus, discarding the per-entry origin.
+///
+/// The common shape: nothing outside diagnostics cares which file an entry came from.
+pub fn parsed() -> Result<(String, Vec<NewKbEntry>), BuiltinError> {
+    let (version, with_origins) = parsed_with_origins()?;
+    Ok((version, with_origins.into_iter().map(|(e, _)| e).collect()))
 }
 
 /// SHA-256 of the embedded bytes, hex-encoded.
@@ -479,6 +527,7 @@ mod tests {
                 match_value: "mygame".into(),
                 platform: "windows".into(),
                 role: "saves".into(),
+                layout: crate::saves::kb::layout::USER_DEFINED.into(),
                 path_template: "{MYGAMES}/{TITLE}".into(),
                 glob: None,
                 priority: 5,

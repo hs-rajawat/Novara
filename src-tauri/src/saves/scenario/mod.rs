@@ -113,6 +113,11 @@ pub struct KbFixture {
     pub match_value: String,
     #[serde(default = "default_role")]
     pub role: String,
+    /// What kind of location this describes. Defaults to official, because a fixture
+    /// naming a specific game is asserting that game's real save location; a fixture
+    /// testing a convention or community layout states it explicitly.
+    #[serde(default = "default_layout")]
+    pub layout: String,
     pub path_template: String,
     #[serde(default)]
     pub note: Option<String>,
@@ -123,6 +128,9 @@ fn default_layer() -> String {
 }
 fn default_role() -> String {
     "saves".to_string()
+}
+fn default_layout() -> String {
+    crate::saves::kb::layout::OFFICIAL.to_string()
 }
 
 #[derive(Debug, Deserialize)]

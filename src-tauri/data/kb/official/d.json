@@ -1,0 +1,142 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'd'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:darksoulsii",
+      "match_kind": "title_norm",
+      "match_value": "darksoulsii",
+      "path_template": "{APPDATA}/DarkSoulsII/{WILDCARD}",
+      "priority": 10,
+      "note": "Per-account directory named after the Steam id",
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:dark-souls-iii",
+      "match_kind": "title_norm",
+      "match_value": "darksoulsiii",
+      "path_template": "{APPDATA}/DarkSoulsIII/{WILDCARD}",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:deeprockgalactic",
+      "match_kind": "title_norm",
+      "match_value": "deeprockgalactic",
+      "path_template": "{LOCALAPPDATA}/FSD/Saved/SaveGames",
+      "priority": 10,
+      "note": "Unreal project name differs from the title",
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:deltarune",
+      "match_kind": "title_norm",
+      "match_value": "deltarune",
+      "path_template": "{LOCALAPPDATA}/DELTARUNE",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:divinity-original-sin-2",
+      "match_kind": "title_norm",
+      "match_value": "divinityoriginalsin2",
+      "path_template": "{DOCUMENTS}/Larian Studios/Divinity Original Sin 2",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:dontstarve",
+      "match_kind": "title_norm",
+      "match_value": "dontstarve",
+      "path_template": "{DOCUMENTS}/Klei/DoNotStarve",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:dontstarvetogether",
+      "match_kind": "title_norm",
+      "match_value": "dontstarvetogether",
+      "path_template": "{DOCUMENTS}/Klei/DoNotStarveTogether",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:dragonageinquisition",
+      "match_kind": "title_norm",
+      "match_value": "dragonageinquisition",
+      "path_template": "{DOCUMENTS}/BioWare/Dragon Age Inquisition/Save",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:dragonageorigins",
+      "match_kind": "title_norm",
+      "match_value": "dragonageorigins",
+      "path_template": "{DOCUMENTS}/BioWare/Dragon Age/Characters",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:dying-light",
+      "match_kind": "title_norm",
+      "match_value": "dyinglight",
+      "path_template": "{DOCUMENTS}/DyingLight/out/save",
+      "priority": 10,
+      "note": "Verified on a real install during Track G validation",
+      "source_ref": "curated:verified-track-g"
+    },
+    {
+      "id": "builtin:dying-light-parent",
+      "match_kind": "title_norm",
+      "match_value": "dyinglight",
+      "path_template": "{DOCUMENTS}/DyingLight",
+      "priority": 20,
+      "note": "Parent fallback: also holds .pro player profiles at its root",
+      "source_ref": "curated:verified-track-g"
+    },
+    {
+      "id": "builtin:dying-light-the-following",
+      "match_kind": "title_norm",
+      "match_value": "dyinglightthefollowing",
+      "path_template": "{DOCUMENTS}/DyingLight/out/save",
+      "priority": 10,
+      "note": "The expansion shares the base game's folder, which the title cannot reach by name",
+      "source_ref": "curated:verified-track-g"
+    },
+    {
+      "id": "builtin:dying-light-the-following-parent",
+      "match_kind": "title_norm",
+      "match_value": "dyinglightthefollowing",
+      "path_template": "{DOCUMENTS}/DyingLight",
+      "priority": 20,
+      "note": "Parent fallback for the expansion",
+      "source_ref": "curated:verified-track-g"
+    },
+    {
+      "id": "builtin:dying-light-the-following-enhanced-edition",
+      "match_kind": "title_norm",
+      "match_value": "dyinglightthefollowingenhancededition",
+      "path_template": "{DOCUMENTS}/DyingLight/out/save",
+      "priority": 10,
+      "note": "Store title for the bundled release; same folder",
+      "source_ref": "curated:verified-track-g"
+    },
+    {
+      "id": "builtin:dysonsphereprogram",
+      "match_kind": "title_norm",
+      "match_value": "dysonsphereprogram",
+      "path_template": "{LOCALLOW}/Youthcat Studio/Dyson Sphere Program",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'r'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:readyornot",
+      "match_kind": "title_norm",
+      "match_value": "readyornot",
+      "path_template": "{LOCALAPPDATA}/ReadyOrNot/Saved/SaveGames",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:red-dead-redemption-2",
+      "match_kind": "title_norm",
+      "match_value": "reddeadredemption2",
+      "path_template": "{DOCUMENTS}/Rockstar Games/Red Dead Redemption 2/Profiles",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:red-dead-redemption-2-parent",
+      "match_kind": "title_norm",
+      "match_value": "reddeadredemption2",
+      "path_template": "{DOCUMENTS}/Rockstar Games/Red Dead Redemption 2",
+      "priority": 20,
+      "note": "Fallback: verified present on a real install where Profiles/ was absent (task 1.22)",
+      "source_ref": "curated:phase1-validated-1.22"
+    },
+    {
+      "id": "builtin:remnantii",
+      "match_kind": "title_norm",
+      "match_value": "remnantii",
+      "path_template": "{LOCALAPPDATA}/Remnant2/Saved/SaveGames",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:rimworld",
+      "match_kind": "title_norm",
+      "match_value": "rimworld",
+      "path_template": "{LOCALLOW}/Ludeon Studios/RimWorld by Ludeon Studios/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:riskofrain2",
+      "match_kind": "title_norm",
+      "match_value": "riskofrain2",
+      "path_template": "{LOCALLOW}/Hopoo Games/Risk of Rain 2",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    }
+  ]
+}

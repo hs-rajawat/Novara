@@ -191,6 +191,7 @@ pub fn detect(
             layer,
             priority: claim.priority.clamp(0, u16::MAX as i64) as u16,
             keyed: claim.keyed,
+            layout: claim.layout.clone(),
         });
     }
 

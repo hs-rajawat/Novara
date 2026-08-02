@@ -1,0 +1,63 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'f'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:factorio",
+      "match_kind": "title_norm",
+      "match_value": "factorio",
+      "path_template": "{APPDATA}/Factorio/saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:fallout-3",
+      "match_kind": "title_norm",
+      "match_value": "fallout3",
+      "path_template": "{MYGAMES}/Fallout3/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:fallout-4",
+      "match_kind": "title_norm",
+      "match_value": "fallout4",
+      "path_template": "{MYGAMES}/Fallout4/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:fallout76",
+      "match_kind": "title_norm",
+      "match_value": "fallout76",
+      "path_template": "{MYGAMES}/Fallout 76",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:fallout-new-vegas",
+      "match_kind": "title_norm",
+      "match_value": "falloutnewvegas",
+      "path_template": "{MYGAMES}/FalloutNV/Saves",
+      "priority": 10,
+      "source_ref": "curated:phase1"
+    },
+    {
+      "id": "builtin:frostpunk",
+      "match_kind": "title_norm",
+      "match_value": "frostpunk",
+      "path_template": "{DOCUMENTS}/Frostpunk",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    }
+  ]
+}

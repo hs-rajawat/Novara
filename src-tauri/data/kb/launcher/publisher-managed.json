@@ -1,0 +1,31 @@
+{
+  "layout": "launcher",
+  "_about": [
+    "Locations a storefront or its publisher ecosystem manages, rather than the game.",
+    "",
+    "Thin on purpose. Most storefronts impose no save convention at all -- that finding is",
+    "recorded in KNOWLEDGE_BASE.md section 9 -- and the ones that do mostly key their",
+    "folders by an identifier NOVARA does not carry in its template variable set:",
+    "",
+    "  Steam Cloud     <Steam install>/userdata/<account id>/<appid>/remote",
+    "                  needs a {STEAM_INSTALL} anchor (roadmap decision 8)",
+    "  Ubisoft Connect %LOCALAPPDATA%/Ubisoft Game Launcher/savegames/<user>/<appid>",
+    "                  needs {UBISOFT_ID}; without it only the shared parent is",
+    "                  expressible, and binding that would archive every Ubisoft game",
+    "  Xbox / MS Store %LOCALAPPDATA%/Packages/<package family name>/SystemAppData/wgs",
+    "                  needs {PACKAGE_FAMILY_NAME}",
+    "",
+    "Naming a shared parent would be worse than omitting it, so those are left out until",
+    "the variable exists. See the Track G report."
+  ],
+  "entries": [
+    {
+      "id": "builtin:launcher-ea-documents",
+      "match_kind": "any",
+      "path_template": "{DOCUMENTS}/Electronic Arts/{TITLE}",
+      "priority": 110,
+      "note": "Folder the EA ecosystem manages across its catalogue",
+      "source_ref": "launcher-convention:ea"
+    }
+  ]
+}

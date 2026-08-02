@@ -30,6 +30,7 @@ const INSTALL: &str = "D:/Games/Test Game";
 const ACCOUNT: &str = "76561198000000001";
 
 fn world() -> VirtualFs {
+    use crate::saves::fs::Anchor;
     VirtualFs::new()
         .with_root(RootKind::AppDataRoaming, &format!("{HOME}/AppData/Roaming"))
         .with_root(RootKind::AppDataLocal, &format!("{HOME}/AppData/Local"))
@@ -37,6 +38,12 @@ fn world() -> VirtualFs {
         .with_root(RootKind::Documents, &format!("{HOME}/Documents"))
         .with_root(RootKind::DocumentsMyGames, &format!("{HOME}/Documents/My Games"))
         .with_root(RootKind::SavedGames, &format!("{HOME}/Saved Games"))
+        // Anchors that are not search roots. `{PUBLIC}` and `{USERPROFILE}` are
+        // legitimate places a template may start from but would be terrible to
+        // enumerate — see `fs::Anchor`. Registered here because the corpus uses them and
+        // an unregistered anchor makes an entry silently unreachable.
+        .with_anchor(Anchor::Public, "C:/Users/Public")
+        .with_anchor(Anchor::UserProfile, HOME)
 }
 
 /// A context that satisfies every variable, so an entry is only unreachable if it is
@@ -98,6 +105,7 @@ fn as_stored(entry: &NewKbEntry, layer: &str) -> SaveKbEntry {
         match_value: entry.match_value.clone(),
         platform: entry.platform.clone(),
         role: entry.role.clone(),
+        layout: entry.layout.clone(),
         path_template: entry.path_template.clone(),
         glob: entry.glob.clone(),
         priority: entry.priority,

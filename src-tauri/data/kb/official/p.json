@@ -1,0 +1,48 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'p'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:palworld",
+      "match_kind": "title_norm",
+      "match_value": "palworld",
+      "path_template": "{LOCALAPPDATA}/Pal/Saved/SaveGames",
+      "priority": 10,
+      "note": "Unreal project name differs from the title",
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:pathfinderwrathoftherighteous",
+      "match_kind": "title_norm",
+      "match_value": "pathfinderwrathoftherighteous",
+      "path_template": "{LOCALLOW}/Owlcat Games/Pathfinder Wrath Of The Righteous",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:phasmophobia",
+      "match_kind": "title_norm",
+      "match_value": "phasmophobia",
+      "path_template": "{LOCALLOW}/Kinetic Games/Phasmophobia",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:pillarsofeternity",
+      "match_kind": "title_norm",
+      "match_value": "pillarsofeternity",
+      "path_template": "{LOCALLOW}/Obsidian Entertainment/Pillars of Eternity/SavedGames",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "version": "2026-08-01.2",
+  "_about": [
+    "Version of the built-in knowledge base, independent of the application version.",
+    "",
+    "Bump this when the corpus content changes. It is stored per entry as kb_version and",
+    "shown in save_kb_versions, so a user can report which corpus they have.",
+    "",
+    "The IDEMPOTENCE key is not this string but a SHA-256 over the merged corpus bytes.",
+    "Startup compares that checksum and does nothing when it matches, so forgetting to",
+    "bump the version still reloads correctly -- the version is for humans, the checksum",
+    "is for the machine.",
+    "",
+    "Everything else lives in the category directories beside this file. See README.md."
+  ]
+}

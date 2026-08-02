@@ -1,0 +1,36 @@
+{
+  "layout": "portable",
+  "_about": [
+    "Portable layouts: saves kept beside the executable.",
+    "",
+    "Anchored on {INSTALL}, so they only apply to a game whose installation directory",
+    "NOVARA knows. The install root itself is never offered -- only conventional save",
+    "subfolders within it."
+  ],
+  "entries": [
+    {
+      "id": "builtin:convention-install-save",
+      "match_kind": "any",
+      "path_template": "{INSTALL}/Save",
+      "priority": 100,
+      "note": "Portable layout, singular folder name",
+      "source_ref": "os-convention:portable"
+    },
+    {
+      "id": "builtin:convention-install-savegames",
+      "match_kind": "any",
+      "path_template": "{INSTALL}/savegames",
+      "priority": 100,
+      "note": "Portable layout",
+      "source_ref": "os-convention:portable"
+    },
+    {
+      "id": "builtin:convention-install-saves",
+      "match_kind": "any",
+      "path_template": "{INSTALL}/saves",
+      "priority": 100,
+      "note": "Portable and scene releases commonly save beside the executable",
+      "source_ref": "os-convention:portable"
+    }
+  ]
+}

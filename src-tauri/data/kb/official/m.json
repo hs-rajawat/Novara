@@ -1,0 +1,40 @@
+{
+  "layout": "official",
+  "_about": [
+    "Official save locations for individual games, keys starting with 'm'.",
+    "",
+    "Sharded by the first character of match_value so placement is mechanical: no",
+    "judgement call about which file a game belongs in. A test enforces it.",
+    "",
+    "layout 'official' means these describe where the game AS SHIPPED writes saves,",
+    "which is the only per-game claim allowed to bind automatically (decision table",
+    "row 5). Do not put an engine, OS or community location here."
+  ],
+  "entries": [
+    {
+      "id": "builtin:masseffectlegendaryedition",
+      "match_kind": "title_norm",
+      "match_value": "masseffectlegendaryedition",
+      "path_template": "{DOCUMENTS}/BioWare/Mass Effect Legendary Edition/Save",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:maxpayne3",
+      "match_kind": "title_norm",
+      "match_value": "maxpayne3",
+      "path_template": "{DOCUMENTS}/Rockstar Games/Max Payne 3",
+      "priority": 10,
+      "source_ref": "curated:track-g"
+    },
+    {
+      "id": "builtin:minecraft",
+      "match_kind": "title_norm",
+      "match_value": "minecraft",
+      "path_template": "{APPDATA}/.minecraft/saves",
+      "priority": 10,
+      "note": "Java Edition",
+      "source_ref": "curated:phase1"
+    }
+  ]
+}
