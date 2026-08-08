@@ -62,9 +62,33 @@ Whether a game came from Steam, itch.io, GOG installers, old DVDs, or any standa
 
 ---
 
-## 🖼 Preview
+## 🖼 Development Preview
 
-> Screenshots coming soon.
+> 🚧 **Work in Progress**
+>
+> NOVARA is actively under development. These screenshots represent the
+> current development build and may change as the UI, features, and overall
+> design continue to evolve.
+
+### Dashboard
+
+![NOVARA Dashboard - Development Preview](docs/screenshots/dashboard-preview.png)
+
+### Game Library
+
+![NOVARA Library - Development Preview](docs/screenshots/library-preview.png)
+
+### Game Details
+
+![NOVARA Game Details - Development Preview](docs/screenshots/game-details-preview.png)
+
+### Game Information & Installation Management
+
+![NOVARA Game Details Overview - Development Preview](docs/screenshots/game-details-overview-preview.png)
+
+### Settings & Privacy
+
+![NOVARA Settings - Development Preview](docs/screenshots/settings-preview.png)
 
 ---
 
